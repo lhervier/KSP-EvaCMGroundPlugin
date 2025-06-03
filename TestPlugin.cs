@@ -145,71 +145,137 @@ namespace com.github.lhervier.ksp {
             Log("Plugin started");
         }
 
-        private bool IsPartBelowGround(Part part) {
+        // ==============================================================================================
+
+        private double GetAltitudeAboveGround(Part part) {
+            Log("--------------------------------");
+            Log($"GetAltitudeAboveGround: {part.name}:{part.persistentId}");
+            Log($"- World :");
+            Log($"  - Position: {part.transform.position}");
+            Log($"  - Rotation (Euler): {part.transform.rotation.eulerAngles}");
+            Log($"  - Forward: {part.transform.rotation * Vector3.forward}");
+            Log($"  - Up (world): {part.transform.rotation * Vector3.up}");
+            Log($"  - Right: {part.transform.rotation * Vector3.right}");
+            Log($"- Local:");
+            Log($"  - Position: {part.transform.localPosition}");
+            Log($"  - Rotation (Euler): {part.transform.localRotation.eulerAngles}");
+            Log($"  - Forward: {part.transform.localRotation * Vector3.forward}");
+            Log($"  - Up: {part.transform.localRotation * Vector3.up}");
+            Log($"  - Right: {part.transform.localRotation * Vector3.right}");
+            
             // Obtenir tous les colliders de la pièce
             Collider[] colliders = part.GetComponentsInChildren<Collider>();
-            
+            Log($"- Nb colliders: {colliders.Length}");
+
+            double minAltitudeAboveGround = float.MaxValue;
+
             foreach (Collider collider in colliders) {
+                Log($"Collider: {collider.name}");
+
                 // Obtenir les points de collision (les coins du collider)
+                // Dans les coordonnées monde
                 Vector3[] corners = GetColliderCorners(collider);
                 
                 foreach (Vector3 corner in corners) {
+                    Log($"- Corner (world): {corner}");
+
                     // Convertir la position en coordonnées géographiques
                     double latitude = FlightGlobals.currentMainBody.GetLatitude(corner);
                     double longitude = FlightGlobals.currentMainBody.GetLongitude(corner);
+                    Log($"  - Latitude: {latitude} - Longitude: {longitude}");
+                    
+                    // Calculer l'altitude du point par rapport au niveau de la mer
+                    double cornerAltitude = FlightGlobals.currentMainBody.GetAltitude(corner);
+                    Log($"  - Altitude: {cornerAltitude}");
                     
                     // Obtenir la hauteur du terrain à cette position
-                    double terrainHeight = FlightGlobals.currentMainBody.TerrainAltitude(latitude, longitude, true);
-                    
+                    double terrainAltitude = FlightGlobals.currentMainBody.TerrainAltitude(latitude, longitude, true);
+                    Log($"  - Altitude du terrain: {terrainAltitude}");
+
                     // Si un seul point est sous le terrain, la pièce est considérée comme sous terre
-                    if (corner.y < terrainHeight) {
-                        return true;
+                    double altitudeAboveGround = cornerAltitude - terrainAltitude;
+                    Log($"  - Altitude above ground: {altitudeAboveGround}");
+                    if (altitudeAboveGround < minAltitudeAboveGround) {
+                        minAltitudeAboveGround = altitudeAboveGround;
                     }
                 }
             }
             
-            return false;
+            Log($"=> Min altitude above ground: {minAltitudeAboveGround}");
+            Log("--------------------------------");
+            return minAltitudeAboveGround;
         }
 
         private Vector3[] GetColliderCorners(Collider collider) {
             Log($"GetColliderCorners: {collider.name}");
             if (collider is BoxCollider boxCollider) {
-                Log($"- BoxCollider: {boxCollider.name}");
-                Vector3 center = boxCollider.center;
-                Vector3 size = boxCollider.size;
-                Vector3[] corners = new Vector3[8];
+                Log($"=> It's a BoxCollider");
                 
-                // Calculer les 8 coins du box collider
-                corners[0] = collider.transform.TransformPoint(center + new Vector3(-size.x, -size.y, -size.z) * 0.5f);
-                corners[1] = collider.transform.TransformPoint(center + new Vector3(size.x, -size.y, -size.z) * 0.5f);
-                corners[2] = collider.transform.TransformPoint(center + new Vector3(-size.x, size.y, -size.z) * 0.5f);
-                corners[3] = collider.transform.TransformPoint(center + new Vector3(size.x, size.y, -size.z) * 0.5f);
-                corners[4] = collider.transform.TransformPoint(center + new Vector3(-size.x, -size.y, size.z) * 0.5f);
-                corners[5] = collider.transform.TransformPoint(center + new Vector3(size.x, -size.y, size.z) * 0.5f);
-                corners[6] = collider.transform.TransformPoint(center + new Vector3(-size.x, size.y, size.z) * 0.5f);
-                corners[7] = collider.transform.TransformPoint(center + new Vector3(size.x, size.y, size.z) * 0.5f);
+                Vector3 center = boxCollider.center;
+                Log($"   - Center: {center}");
+                Vector3 size = boxCollider.size;
+                Log($"   - Size: {size}");
+                
+                // Calculer les 8 coins du box collider dans l'espace local
+                Vector3[] localCorners = new Vector3[] {
+                    center + new Vector3(-size.x, -size.y, -size.z) * 0.5f,     // En bas à gauche
+                    center + new Vector3(size.x, -size.y, -size.z) * 0.5f,      // En bas à droite
+                    center + new Vector3(-size.x, size.y, -size.z) * 0.5f,      // En haut à gauche
+                    center + new Vector3(size.x, size.y, -size.z) * 0.5f,       // En haut à droite
+                    center + new Vector3(-size.x, -size.y, size.z) * 0.5f,      // En haut à gauche
+                    center + new Vector3(size.x, -size.y, size.z) * 0.5f,       // En bas à droite
+                    center + new Vector3(-size.x, size.y, size.z) * 0.5f,       // En haut à droite
+                    center + new Vector3(size.x, size.y, size.z) * 0.5f         // En bas à droite
+                };
+                
+                // Transformer chaque point dans l'espace monde en tenant compte de la rotation
+                Vector3[] corners = new Vector3[localCorners.Length];
+                for (int i = 0; i < localCorners.Length; i++) {
+                    corners[i] = collider.transform.TransformPoint(localCorners[i]);
+                    Log($"  - Corner {i}: {localCorners[i]} => {corners[i]}");
+                }
                 
                 return corners;
             }
             else if (collider is SphereCollider sphereCollider) {
                 Log($"- SphereCollider: {sphereCollider.name}");
+                
                 // Pour un sphere collider, on vérifie le point le plus bas
                 Vector3 center = sphereCollider.center;
+                Log($"  - center: {center}");
                 float radius = sphereCollider.radius;
-                Vector3 bottomPoint = collider.transform.TransformPoint(center + new Vector3(0, -radius, 0));
+                Log($"  - radius: {radius}");
+                
+                // Calculer le point le plus bas dans l'espace local
+                Vector3 localBottomPoint = center + new Vector3(0, -radius, 0);
+                Log($"  - localBottomPoint: {localBottomPoint}");
+                
+                // Transformer dans l'espace monde
+                Vector3 bottomPoint = collider.transform.TransformPoint(localBottomPoint);
                 return new Vector3[] { bottomPoint };
             }
             else if (collider is CapsuleCollider capsuleCollider) {
                 Log($"- CapsuleCollider: {capsuleCollider.name}");
+
                 // Pour un capsule collider, on vérifie les points les plus bas
                 Vector3 center = capsuleCollider.center;
+                Log($"  - center: {center}");
                 float radius = capsuleCollider.radius;
+                Log($"  - radius: {radius}");
                 float height = capsuleCollider.height;
-                Vector3[] points = new Vector3[2];
+                Log($"  - height: {height}");
                 
-                // Points les plus bas de la capsule
-                points[0] = collider.transform.TransformPoint(center + new Vector3(-radius, -height * 0.5f, 0));
-                points[1] = collider.transform.TransformPoint(center + new Vector3(radius, -height * 0.5f, 0));
+                // Calculer les points les plus bas dans l'espace local
+                Vector3[] localPoints = new Vector3[] {
+                    center + new Vector3(-radius, -height * 0.5f, 0),
+                    center + new Vector3(radius, -height * 0.5f, 0)
+                };
+                
+                Vector3[] points = new Vector3[2];
+                for (int i = 0; i < localPoints.Length; i++) {
+                    points[i] = collider.transform.TransformPoint(localPoints[i]);
+                    Log($"  - localPoint {i}: {localPoints[i]} => {points[i]}");
+                }
                 
                 return points;
             }
@@ -219,60 +285,16 @@ namespace com.github.lhervier.ksp {
             return new Vector3[] { collider.transform.position };
         }
 
-        private float GetMinimumHeightAboveGround(Part part) {
-            float maxHeight = float.MinValue;
-            
-            // Obtenir tous les colliders de la pièce
-            Collider[] colliders = part.GetComponentsInChildren<Collider>();
-            
-            foreach (Collider collider in colliders) {
-                // Obtenir les points de collision (les coins du collider)
-                Vector3[] corners = GetColliderCorners(collider);
-                
-                foreach (Vector3 corner in corners) {
-                    // Convertir la position en coordonnées géographiques
-                    double latitude = FlightGlobals.currentMainBody.GetLatitude(corner);
-                    double longitude = FlightGlobals.currentMainBody.GetLongitude(corner);
-                    
-                    // Obtenir la hauteur du terrain à cette position
-                    double terrainHeight = FlightGlobals.currentMainBody.TerrainAltitude(latitude, longitude, true);
-                    
-                    // Calculer la différence de hauteur nécessaire pour ce point
-                    float heightDiff = (float)(terrainHeight - corner.y);
-                    maxHeight = Mathf.Max(maxHeight, heightDiff);
-                }
-            }
-            
-            return maxHeight;
-        }
-
         private void OnEditorPartEvent(ConstructionEventType eventType, Part part) {
-            Log($"onEditorPartEvent: {eventType} - {part.name}");
-            
-            if (IsPartBelowGround(part)) {
-                Log($"Part {part.name} est sous le sol");
+            Log($"onEditorPartEvent: {eventType} - {part.name}:{part.persistentId}");
+
+            double altitudeAboveGround = GetAltitudeAboveGround(part);
+            if (altitudeAboveGround < 0) {
+                Log($"Part {part.name} is below ground of {altitudeAboveGround}m");
+                float heightToAdd = (float) altitudeAboveGround * -1.0f + 0.1f;
                 
-                // Convertir la position en coordonnées géographiques
-                Vector3d worldPosition = part.transform.position;
-                double latitude = FlightGlobals.currentMainBody.GetLatitude(worldPosition);
-                double longitude = FlightGlobals.currentMainBody.GetLongitude(worldPosition);
-                Log($"- latitude: {latitude} - longitude: {longitude}");
-                
-                // Obtenir la hauteur du terrain
-                double terrainHeight = FlightGlobals.currentMainBody.TerrainAltitude(latitude, longitude, true);
-                Log($"- Terrain Height: {terrainHeight}");
-                
-                // Calculer la hauteur minimale nécessaire pour soulever la pièce
-                float heightToAdd = GetMinimumHeightAboveGround(part);
-                Log($"- Minimum height above ground : {heightToAdd}");
-                
-                // Repositionner la pièce au-dessus du sol
-                part.transform.position = new Vector3(
-                    (float)worldPosition.x,
-                    (float)terrainHeight + heightToAdd,
-                    (float)worldPosition.z
-                );
-                Log($"=> Part {part.name} repositionnée au-dessus du sol");
+                part.transform.position += part.transform.up * heightToAdd;
+                Log($"=> New position above ground: {part.transform.position}");
             }
         }
     }
