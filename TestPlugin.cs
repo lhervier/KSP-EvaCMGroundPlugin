@@ -1,0 +1,279 @@
+using UnityEngine;
+
+namespace com.github.lhervier.ksp {
+	
+	[KSPAddon(KSPAddon.Startup.PSystemSpawn, false)]
+    public class TestPlugin : MonoBehaviour {
+        
+        private void Log(string message) {
+            Debug.Log("[TestPlugin] " + message);
+        }
+
+        public void Start() {
+            GameEvents.onEditorPartEvent.Add(OnEditorPartEvent);
+            
+            
+            
+            
+            GameEvents.onAboutToSaveShip.Add((ShipConstruct ship) => {
+                Log($"onAboutToSaveShip: {ship.persistentId}");
+            });
+            GameEvents.onActiveJointNeedUpdate.Add((Vessel vessel) => {
+                Log($"onActiveJointNeedUpdate: {vessel.name}");
+            });
+            GameEvents.onCollision.Add((EventReport report) => {
+                Log($"onCollision: {report.msg}");
+            });
+            GameEvents.OnCollisionEnhancerHit.Add((Part part, UnityEngine.RaycastHit hitInfo) => {
+                Log($"onCollisionEnhancerHit: {part.name} - {hitInfo.point}");
+            });
+            GameEvents.OnCollisionIgnoreUpdate.Add(() => {
+                Log($"onCollisionIgnoreUpdate");
+            });
+            GameEvents.onEditorCompoundPartLinked.Add((CompoundPart part) => {
+                Log($"onEditorCompoundPartLinked: {part.name}");
+            });
+            GameEvents.onEditorConstructionModeChange.Add((ConstructionMode mode) => {
+                Log($"onEditorConstructionModeChange: {mode}");
+            });
+            GameEvents.onEditorRestoreState.Add(() => {
+                Log($"onEditorRestoreState");
+            });
+            GameEvents.onEditorShipModified.Add((ShipConstruct ship) => {
+                Log($"onEditorShipModified: {ship.persistentId}");
+            });
+            GameEvents.onEditorStarted.Add(() => {
+                Log($"onEditorStarted");
+            });
+            GameEvents.OnEVAConstructionMode.Add((bool mode) => {
+                Log($"OnEVAConstructionMode: {mode}");
+            });
+            GameEvents.OnEVAConstructionModeChanged.Add((ConstructionMode mode) => {
+                Log($"OnEVAConstructionModeChanged: {mode}");
+            });
+            GameEvents.OnEVAConstructionModePartAttached.Add((Vessel vessel, Part part) => {
+                Log($"OnEVAConstructionModePartAttached: {vessel.name} - {part.name}");
+            });
+            GameEvents.OnEVAConstructionModePartDetached.Add((Vessel vessel, Part part) => {
+                Log($"OnEVAConstructionModePartDetached: {vessel.name} - {part.name}");
+            });
+            GameEvents.OnEVAConstructionWeldFinish.Add((KerbalEVA eva) => {
+                Log($"OnEVAConstructionWeldFinish: {eva.name}");
+            });
+            GameEvents.OnEVAConstructionWeldStart.Add((KerbalEVA eva) => {
+                Log($"OnEVAConstructionWeldStart: {eva.name}");
+            });
+            GameEvents.OnEVAConstructionWeldStart.Add((KerbalEVA eva) => {
+                Log($"OnEVAConstructionWeldStart: {eva.name}");
+            });
+            GameEvents.OnExpansionSystemLoaded.Add(() => {
+                Log($"OnExpansionSystemLoaded");
+            });
+            GameEvents.OnFlightCompoundPartDetached.Add((CompoundPart part) => {
+                Log($"OnFlightCompoundPartDetached: {part.name}");
+            });
+            GameEvents.OnFlightCompoundPartLinked.Add((CompoundPart part) => {
+                Log($"OnFlightCompoundPartLinked: {part.name}");
+            });
+            GameEvents.onGameStateLoad.Add((ConfigNode node) => {
+                Log($"onGameStateLoad: {node.name}");
+            });
+            GameEvents.onGameStateSave.Add((ConfigNode node) => {
+                Log($"onGameStateSave: {node.name}");
+            });
+            GameEvents.onGameStateCreated.Add((Game game) => {
+                Log($"onGameStateCreated: {game.Title}");
+            });
+            GameEvents.onGameStateSaved.Add((Game game) => {
+                Log($"onGameStateSaved: {game.Title}");
+            });
+            GameEvents.onGlobalEvaPhysicMaterialChanged.Add((PhysicMaterial material) => {
+                Log($"onGlobalEvaPhysicMaterialChanged: {material.name}");
+            });
+            GameEvents.onKrakensbaneDisengage.Add((Vector3d position) => {
+                Log($"onKrakensbaneDisengage: {position}");
+            });
+            GameEvents.onKrakensbaneEngage.Add((Vector3d position) => {
+                Log($"onKrakensbaneEngage: {position}");
+            });
+            GameEvents.onKrakensbaneDisengage.Add((Vector3d position) => {
+                Log($"onKrakensbaneDisengage: {position}");
+            });
+            GameEvents.onKrakensbaneEngage.Add((Vector3d position) => {
+                Log($"onKrakensbaneEngage: {position}");
+            });
+            GameEvents.onPartActionInitialized.Add((Part part) => {
+                Log($"onPartActionInitialized: {part.name}");
+            });
+            GameEvents.onPartUnpack.Add((Part part) => {
+                Log($"onPartUnpack: {part.name}");
+            });
+            GameEvents.onPartPack.Add((Part part) => {
+                Log($"onPartPack: {part.name}");
+            });
+            GameEvents.onPartUnpack.Add((Part part) => {
+                Log($"onPartUnpack: {part.name}");
+            });
+            GameEvents.onPhysicsEaseStart.Add((Vessel vessel) => {
+                Log($"onPhysicsEaseStart: {vessel.name}");
+            });
+            GameEvents.onPhysicsEaseStop.Add((Vessel vessel) => {
+                Log($"onPhysicsEaseStop: {vessel.name}");
+            });
+            GameEvents.onPhysicsEaseStop.Add((Vessel vessel) => {
+                Log($"onPhysicsEaseStop: {vessel.name}");
+            });
+            GameEvents.onPhysicsEaseStop.Add((Vessel vessel) => {
+                Log($"onPhysicsEaseStop: {vessel.name}");
+            });
+            GameEvents.onProtoPartFailure.Add((ProtoPartSnapshot part) => {
+                Log($"onProtoPartFailure: {part.partName}");
+            });
+            GameEvents.onProtoPartSnapshotLoad.Add((GameEvents.FromToAction<ProtoPartSnapshot, ConfigNode> action) => {
+                Log($"onProtoPartSnapshotLoad: {action.from.partName} - {action.to.name}");
+            });
+            GameEvents.onProtoPartSnapshotSave.Add((GameEvents.FromToAction<ProtoPartSnapshot, ConfigNode> action) => {
+                Log($"onProtoPartSnapshotSave: {action.from.partName} - {action.to.name}");
+            });
+            GameEvents.onProtoVesselSave.Add((GameEvents.FromToAction<ProtoVessel, ConfigNode> action) => {
+                Log($"onProtoVesselSave: {action.from.vesselName} - {action.to.name}");
+            });
+            GameEvents.onProtoVesselLoad.Add((GameEvents.FromToAction<ProtoVessel, ConfigNode> action) => {
+                Log($"onProtoVesselLoad: {action.from.vesselName} - {action.to.name}");
+            });
+            
+            Log("Plugin started");
+        }
+
+        private bool IsPartBelowGround(Part part) {
+            // Obtenir tous les colliders de la pièce
+            Collider[] colliders = part.GetComponentsInChildren<Collider>();
+            
+            foreach (Collider collider in colliders) {
+                // Obtenir les points de collision (les coins du collider)
+                Vector3[] corners = GetColliderCorners(collider);
+                
+                foreach (Vector3 corner in corners) {
+                    // Convertir la position en coordonnées géographiques
+                    double latitude = FlightGlobals.currentMainBody.GetLatitude(corner);
+                    double longitude = FlightGlobals.currentMainBody.GetLongitude(corner);
+                    
+                    // Obtenir la hauteur du terrain à cette position
+                    double terrainHeight = FlightGlobals.currentMainBody.TerrainAltitude(latitude, longitude, true);
+                    
+                    // Si un seul point est sous le terrain, la pièce est considérée comme sous terre
+                    if (corner.y < terrainHeight) {
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+        }
+
+        private Vector3[] GetColliderCorners(Collider collider) {
+            Log($"GetColliderCorners: {collider.name}");
+            if (collider is BoxCollider boxCollider) {
+                Log($"- BoxCollider: {boxCollider.name}");
+                Vector3 center = boxCollider.center;
+                Vector3 size = boxCollider.size;
+                Vector3[] corners = new Vector3[8];
+                
+                // Calculer les 8 coins du box collider
+                corners[0] = collider.transform.TransformPoint(center + new Vector3(-size.x, -size.y, -size.z) * 0.5f);
+                corners[1] = collider.transform.TransformPoint(center + new Vector3(size.x, -size.y, -size.z) * 0.5f);
+                corners[2] = collider.transform.TransformPoint(center + new Vector3(-size.x, size.y, -size.z) * 0.5f);
+                corners[3] = collider.transform.TransformPoint(center + new Vector3(size.x, size.y, -size.z) * 0.5f);
+                corners[4] = collider.transform.TransformPoint(center + new Vector3(-size.x, -size.y, size.z) * 0.5f);
+                corners[5] = collider.transform.TransformPoint(center + new Vector3(size.x, -size.y, size.z) * 0.5f);
+                corners[6] = collider.transform.TransformPoint(center + new Vector3(-size.x, size.y, size.z) * 0.5f);
+                corners[7] = collider.transform.TransformPoint(center + new Vector3(size.x, size.y, size.z) * 0.5f);
+                
+                return corners;
+            }
+            else if (collider is SphereCollider sphereCollider) {
+                Log($"- SphereCollider: {sphereCollider.name}");
+                // Pour un sphere collider, on vérifie le point le plus bas
+                Vector3 center = sphereCollider.center;
+                float radius = sphereCollider.radius;
+                Vector3 bottomPoint = collider.transform.TransformPoint(center + new Vector3(0, -radius, 0));
+                return new Vector3[] { bottomPoint };
+            }
+            else if (collider is CapsuleCollider capsuleCollider) {
+                Log($"- CapsuleCollider: {capsuleCollider.name}");
+                // Pour un capsule collider, on vérifie les points les plus bas
+                Vector3 center = capsuleCollider.center;
+                float radius = capsuleCollider.radius;
+                float height = capsuleCollider.height;
+                Vector3[] points = new Vector3[2];
+                
+                // Points les plus bas de la capsule
+                points[0] = collider.transform.TransformPoint(center + new Vector3(-radius, -height * 0.5f, 0));
+                points[1] = collider.transform.TransformPoint(center + new Vector3(radius, -height * 0.5f, 0));
+                
+                return points;
+            }
+            
+            // Pour les autres types de colliders, on vérifie juste le centre
+            Log($"- Other collider: {collider.name}");
+            return new Vector3[] { collider.transform.position };
+        }
+
+        private float GetMinimumHeightAboveGround(Part part) {
+            float maxHeight = float.MinValue;
+            
+            // Obtenir tous les colliders de la pièce
+            Collider[] colliders = part.GetComponentsInChildren<Collider>();
+            
+            foreach (Collider collider in colliders) {
+                // Obtenir les points de collision (les coins du collider)
+                Vector3[] corners = GetColliderCorners(collider);
+                
+                foreach (Vector3 corner in corners) {
+                    // Convertir la position en coordonnées géographiques
+                    double latitude = FlightGlobals.currentMainBody.GetLatitude(corner);
+                    double longitude = FlightGlobals.currentMainBody.GetLongitude(corner);
+                    
+                    // Obtenir la hauteur du terrain à cette position
+                    double terrainHeight = FlightGlobals.currentMainBody.TerrainAltitude(latitude, longitude, true);
+                    
+                    // Calculer la différence de hauteur nécessaire pour ce point
+                    float heightDiff = (float)(terrainHeight - corner.y);
+                    maxHeight = Mathf.Max(maxHeight, heightDiff);
+                }
+            }
+            
+            return maxHeight;
+        }
+
+        private void OnEditorPartEvent(ConstructionEventType eventType, Part part) {
+            Log($"onEditorPartEvent: {eventType} - {part.name}");
+            
+            if (IsPartBelowGround(part)) {
+                Log($"Part {part.name} est sous le sol");
+                
+                // Convertir la position en coordonnées géographiques
+                Vector3d worldPosition = part.transform.position;
+                double latitude = FlightGlobals.currentMainBody.GetLatitude(worldPosition);
+                double longitude = FlightGlobals.currentMainBody.GetLongitude(worldPosition);
+                Log($"- latitude: {latitude} - longitude: {longitude}");
+                
+                // Obtenir la hauteur du terrain
+                double terrainHeight = FlightGlobals.currentMainBody.TerrainAltitude(latitude, longitude, true);
+                Log($"- Terrain Height: {terrainHeight}");
+                
+                // Calculer la hauteur minimale nécessaire pour soulever la pièce
+                float heightToAdd = GetMinimumHeightAboveGround(part);
+                Log($"- Minimum height above ground : {heightToAdd}");
+                
+                // Repositionner la pièce au-dessus du sol
+                part.transform.position = new Vector3(
+                    (float)worldPosition.x,
+                    (float)terrainHeight + heightToAdd,
+                    (float)worldPosition.z
+                );
+                Log($"=> Part {part.name} repositionnée au-dessus du sol");
+            }
+        }
+    }
+}
