@@ -8,6 +8,7 @@ namespace com.github.lhervier.ksp {
         
         private Part previousPart;
         private Vector3d previousPosition;
+        private Quaternion previousRotation;
 
         private void Log(string message) {
             Debug.Log("[TestPlugin] " + message);
@@ -152,6 +153,7 @@ namespace com.github.lhervier.ksp {
         // ==============================================================================================
 
         bool IsGrounded(Collider collider) {
+            Log($"IsGrounded(Collider): {collider.name}");
             if (collider is BoxCollider boxCollider) {
                 return IsGrounded(boxCollider);
             }
@@ -168,13 +170,30 @@ namespace com.github.lhervier.ksp {
         }
 
         bool IsGrounded(BoxCollider boxCollider) {
-            Log($"IsGrounded(BoxCollider): {boxCollider.name}");
-            return Physics.CheckBox(
-                boxCollider.transform.position,
-                boxCollider.size * 0.5f,
+            int layerMask = ~((1 << boxCollider.gameObject.layer) |     // The collider layer
+                             (1 << 11) |                                // UIDialog
+                             (1 << 1) |                                 // TransparentFX
+                             (1 << 5) |                                 // UI
+                             (1 << 12) |                                // UIVectors
+                             (1 << 13) |                                // UI_Mask
+                             (1 << 14) |                                // Screens
+                             (1 << 25));                                // UIAdditional
+            
+            Collider[] colliders = Physics.OverlapBox(
+                boxCollider.bounds.center,
+                boxCollider.bounds.extents,
                 boxCollider.transform.rotation,
-                LayerMask.GetMask("TerrainColliders")
+                layerMask
             );
+            
+            if (colliders.Length > 0) {
+                Log($"  - Nombre de collisions : {colliders.Length}");
+                foreach (Collider collider in colliders) {
+                    Log($"  - Collision avec : {collider.name} sur le layer {collider.gameObject.layer} ({LayerMask.LayerToName(collider.gameObject.layer)})");
+                }
+            }
+            
+            return colliders.Length > 0;
         }
 
         bool IsGrounded(CapsuleCollider capsuleCollider) {
@@ -184,48 +203,84 @@ namespace com.github.lhervier.ksp {
             float height = capsuleCollider.height;
             Vector3 direction = capsuleCollider.transform.up;
             
+            int layerMask = ~(1 << capsuleCollider.gameObject.layer);
+            
             return Physics.CheckCapsule(
                 center - direction * (height * 0.5f),
                 center + direction * (height * 0.5f),
                 radius,
-                LayerMask.GetMask("TerrainColliders")
+                layerMask
             );
         }
 
         bool IsGrounded(SphereCollider sphereCollider) {
             Log($"IsGrounded(SphereCollider): {sphereCollider.name}");
+            int layerMask = ~(1 << sphereCollider.gameObject.layer);
+            
             return Physics.CheckSphere(
                 sphereCollider.transform.position,
                 sphereCollider.radius,
-                LayerMask.GetMask("TerrainColliders")
+                layerMask
             );
         }
 
         private void OnEditorPartEvent(ConstructionEventType eventType, Part part) {
             Log($"onEditorPartEvent: {eventType} - {part.name}:{part.persistentId}");
-
+            Log("Liste des layers du jeu :");
+            for (int i = 0; i < 32; i++) {  // Unity a 32 layers maximum
+                string layerName = LayerMask.LayerToName(i);
+                if (!string.IsNullOrEmpty(layerName)) {
+                    Log($"Layer {i}: {layerName}");
+                }
+            }
+            
             if( part != this.previousPart ) {
                 this.previousPart = part;
                 this.previousPosition = part.transform.position;
-                Log($"  - New part. Using current position as previous position: {this.previousPosition}");
+                this.previousRotation = part.transform.rotation;
+                Log($"  - New part. Using current position as previous position: {this.previousPosition} / {this.previousRotation}");
             }
             else {
-                Log($"  - Same part as previous. Using stored previous position: {this.previousPosition}");
+                Log($"  - Same part as previous. Using stored previous position: {this.previousPosition} / {this.previousRotation}");
             }   
+            Log($"  - Part center position: {part.transform.position}");
+            Log($"  - Part center rotation: {part.transform.rotation}");
             
-            Collider[] colliders = part.GetComponentsInChildren<Collider>();
-            foreach (Collider collider in colliders) {
-                Log($"Collider: {collider.name}");
-                if (IsGrounded(collider)) {
-                    Log($"=> Grounded ! Restoring previous position: {this.previousPosition}");
-                    part.transform.position = this.previousPosition;    
-                    break;
+            // Checking altitude of the part center to see if it's below the ground
+            // double partCenterLatitude = FlightGlobals.currentMainBody.GetLatitude(part.transform.position);
+            // double partCenterLongitude = FlightGlobals.currentMainBody.GetLongitude(part.transform.position);
+            // double partCenterAltitude = FlightGlobals.currentMainBody.GetAltitude(part.transform.position);
+
+            // double terrainAltitude = FlightGlobals.currentMainBody.TerrainAltitude(partCenterLatitude, partCenterLongitude, true);
+            // double heightAboveTerrain = partCenterAltitude - terrainAltitude;
+            
+            // Log($"  - Part center altitude: {partCenterAltitude}");
+            // Log($"  - Terrain altitude: {terrainAltitude}");
+            // Log($"  => Height above terrain: {heightAboveTerrain}");
+            
+            // if (heightAboveTerrain < 0) {
+            //     Log($"=> Part center is below the ground ! Restoring previous position: {this.previousPosition}");
+            //     part.transform.position = this.previousPosition;
+            // }
+            // else {
+                // Log($"=> Part center is above the ground. Checking collisions...");
+                Collider[] colliders = part.GetComponentsInChildren<Collider>();
+                foreach (Collider collider in colliders) {
+                    Log($"Collider: {collider.name}");
+                    if (IsGrounded(collider)) {
+                        Log($"=> Grounded ! Restoring previous position and rotation: {this.previousPosition} / {this.previousRotation}");
+                        part.transform.position = this.previousPosition;
+                        part.transform.rotation = this.previousRotation;
+                        break;
+                    }
+                    else {
+                        Log($"=> Not grounded...");
+                    }
                 }
-                else {
-                    Log($"=> Not grounded...");
-                }
-            }
+            // }
+            
             this.previousPosition = part.transform.position;
+            this.previousRotation = part.transform.rotation;
         }
     }
 }
