@@ -21,16 +21,26 @@ namespace com.github.lhervier.ksp {
         }
 
         public void Start() {
-            GameEvents.onEditorPartEvent.Add(OnEditorPartEvent);
-            
-            GameEvents.OnEVAConstructionMode.Add((bool mode) => {
-                Log($"OnEVAConstructionMode: {mode}");
-            });
+            GameEvents.OnEVAConstructionMode.Add(OnEVAConstructionMode);
             Log("Plugin started");
         }
 
         public void OnDestroy() {
+            GameEvents.onEditorPartEvent.Remove(OnEditorPartEvent);
+            GameEvents.OnEVAConstructionMode.Remove(OnEVAConstructionMode);
             Log("Plugin stopped");
+        }
+
+        public void OnEVAConstructionMode(bool mode) {
+            Log($"OnEVAConstructionMode: {mode}");
+            if( mode ) {
+                Log("Starting Fix");
+                GameEvents.onEditorPartEvent.Add(OnEditorPartEvent);
+            }
+            else {
+                Log("Stopping Fix");
+                GameEvents.onEditorPartEvent.Remove(OnEditorPartEvent);
+            }
         }
 
         // ==============================================================================================
