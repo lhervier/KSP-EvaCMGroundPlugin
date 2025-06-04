@@ -146,6 +146,15 @@ namespace com.github.lhervier.ksp {
 
         // ==============================================================================================
 
+        Vector3 GetScale(Collider collider) {
+            Vector3 colliderScale = collider.transform.lossyScale;
+            return new Vector3(
+                Mathf.Abs(colliderScale.x),
+                Mathf.Abs(colliderScale.y),
+                Mathf.Abs(colliderScale.z)
+            );
+        }
+
         bool IsCollidingWithGround(Collider collider) {
             Collider[] colliders;
             if (collider is BoxCollider boxCollider) {
@@ -170,26 +179,8 @@ namespace com.github.lhervier.ksp {
             return colliders.Length > 0;
         }
 
-        float GetScale(Collider collider) {
-            Vector3 colliderScale = collider.transform.lossyScale;
-            float epsilon = 0.0001f;  // Tolérance pour la comparaison de floats
-            if( 
-                Mathf.Abs(colliderScale.x - colliderScale.y) > epsilon || 
-                Mathf.Abs(colliderScale.y - colliderScale.z) > epsilon
-            ) {
-                LogError($"Scale is not uniform: {colliderScale}");
-                return 1.0f;
-            }
-            return Mathf.Abs(colliderScale.x);
-        }
-
-        Vector3 GetScaleAsVector3(Collider collider) {
-            float scale = GetScale(collider);
-            return new Vector3(scale, scale, scale);
-        }
-
         Collider[] GetBoxColliders(BoxCollider boxCollider) {
-            Vector3 scale = GetScaleAsVector3(boxCollider);
+            Vector3 scale = GetScale(boxCollider);
             
             Vector3 center = boxCollider.transform.position - Vector3.up * GROUND_OFFSET;  // Adding 0.01 unit up to avoid collision with the ground
             Vector3 scaledSize = Vector3.Scale(boxCollider.size, scale);
@@ -205,9 +196,28 @@ namespace com.github.lhervier.ksp {
 
         Collider[] GetCapsuleColliders(CapsuleCollider capsuleCollider) {
             Vector3 center = capsuleCollider.transform.position - Vector3.up * GROUND_OFFSET;  // Adding 0.01 unit up to avoid collision with the ground
-            float scale = GetScale(capsuleCollider);
-            float scaledRadius = capsuleCollider.radius * scale;
-            float scaledHeight = capsuleCollider.height * scale;
+            Vector3 scale = GetScale(capsuleCollider);
+            
+            // Calculate radius using the maximum scale of the two perpendicular axes
+            float radiusScale;
+            float heightScale;
+            switch (capsuleCollider.direction) {
+                case 0: // X-axis
+                    radiusScale = Mathf.Max(scale.y, scale.z);
+                    heightScale = scale.x;
+                    break;
+                case 1: // Y-axis
+                    radiusScale = Mathf.Max(scale.x, scale.z);
+                    heightScale = scale.y;
+                    break;
+                default: // Z-axis
+                    radiusScale = Mathf.Max(scale.x, scale.y);
+                    heightScale = scale.z;
+                    break;
+            }
+            
+            float scaledRadius = capsuleCollider.radius * radiusScale;
+            float scaledHeight = capsuleCollider.height * heightScale;
             float height = scaledHeight - (2 * scaledRadius);
             Quaternion rotation = capsuleCollider.transform.rotation;
             int direction = capsuleCollider.direction;
@@ -244,8 +254,10 @@ namespace com.github.lhervier.ksp {
         }
 
         Collider[] GetSphereColliders(SphereCollider sphereCollider) {
-            float scale = GetScale(sphereCollider);
-            float scaledRadius = sphereCollider.radius * scale;
+            Vector3 scale = GetScale(sphereCollider);
+            // For a sphere, we use the largest scale to maintain the spherical shape
+            float maxScale = Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z));
+            float scaledRadius = sphereCollider.radius * maxScale;
             
             return Physics.OverlapSphere(
                 sphereCollider.transform.position - Vector3.up * GROUND_OFFSET,  // Adding 0.01 unit up to avoid collision with the ground
@@ -256,7 +268,7 @@ namespace com.github.lhervier.ksp {
 
         Collider[] GetMeshColliders(MeshCollider meshCollider) {
             // Getting all the colliders in the zone
-            Vector3 scale = GetScaleAsVector3(meshCollider);
+            Vector3 scale = GetScale(meshCollider);
             Vector3 scaledExtents = Vector3.Scale(
                 meshCollider.bounds.extents,
                 scale
