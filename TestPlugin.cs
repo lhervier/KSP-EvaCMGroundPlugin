@@ -47,13 +47,13 @@ namespace com.github.lhervier.ksp {
 
         bool IsGrounded(Collider collider) {
             if (collider is BoxCollider boxCollider) {
-                return IsGrounded(boxCollider);
+                return IsBoxGrounded(boxCollider);
             }
             else if (collider is CapsuleCollider capsuleCollider) {
-                return IsGrounded(capsuleCollider);
+                return IsCapsuleGrounded(capsuleCollider);
             }
             else if (collider is SphereCollider sphereCollider) {
-                return IsGrounded(sphereCollider);
+                return IsSphereGrounded(sphereCollider);
             }
             else {
                 Log($"ERROR : Unsupported collider: {collider.name} (position: {collider.transform.position})");
@@ -61,7 +61,8 @@ namespace com.github.lhervier.ksp {
             }
         }
 
-        bool IsGrounded(BoxCollider boxCollider) {
+        bool IsBoxGrounded(BoxCollider boxCollider) {
+            Log($"IsBoxGrounded: {boxCollider.name}");
             int layerMask = ~((1 << boxCollider.gameObject.layer) |     // The collider layer
                              (1 << 11) |                                // UIDialog
                              (1 << 1) |                                 // TransparentFX
@@ -88,8 +89,8 @@ namespace com.github.lhervier.ksp {
             return colliders.Length > 0;
         }
 
-        bool IsGrounded(CapsuleCollider capsuleCollider) {
-            Log($"IsGrounded(CapsuleCollider): {capsuleCollider.name}");
+        bool IsCapsuleGrounded(CapsuleCollider capsuleCollider) {
+            Log($"IsCapsuleGrounded: {capsuleCollider.name}");
             Vector3 center = capsuleCollider.transform.position;
             float radius = capsuleCollider.radius;
             float height = capsuleCollider.height;
@@ -105,8 +106,8 @@ namespace com.github.lhervier.ksp {
             );
         }
 
-        bool IsGrounded(SphereCollider sphereCollider) {
-            Log($"IsGrounded(SphereCollider): {sphereCollider.name}");
+        bool IsSphereGrounded(SphereCollider sphereCollider) {
+            Log($"IsSphereGrounded: {sphereCollider.name}");
             int layerMask = ~(1 << sphereCollider.gameObject.layer);
             
             return Physics.CheckSphere(
