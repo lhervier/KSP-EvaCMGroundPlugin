@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using Expansions.Missions.Editor;
 using UnityEngine;
 
@@ -7,6 +9,56 @@ namespace com.github.lhervier.ksp {
 	[KSPAddon(KSPAddon.Startup.PSystemSpawn, false)]
     public class EvaCMGroundMod : MonoBehaviour {
         
+        private static bool DEBUG = false;
+        private static float GROUND_OFFSET = 0.01f;
+        private static readonly string CONFIG_FILE = "eva_cm_ground.cfg";
+
+        /// <summary>
+        /// Layer mask for the colliders that we want to check.
+        //  Layer 0: Default
+        //  Layer 1: TransparentFX
+        //  Layer 2: Ignore Raycast
+        //  Layer 4: Water
+        //  Layer 5: UI
+        //  Layer 8: PartsList_Icons
+        //  Layer 9: Atmosphere
+        //  Layer 10: Scaled Scenery
+        //  Layer 11: UIDialog
+        //  Layer 12: UIVectors
+        //  Layer 13: UI_Mask
+        //  Layer 14: Screens
+        //  Layer 15: Local Scenery
+        //  Layer 16: kerbals
+        //  Layer 17: EVA
+        //  Layer 18: SkySphere
+        //  Layer 19: PhysicalObjects
+        //  Layer 20: Internal Space
+        //  Layer 21: Part Triggers
+        //  Layer 22: KerbalInstructors
+        //  Layer 23: AeroFXIgnore
+        //  Layer 24: MapFX
+        //  Layer 25: UIAdditional
+        //  Layer 26: WheelCollidersIgnore
+        //  Layer 27: WheelColliders
+        //  Layer 28: TerrainColliders
+        //  Layer 29: DragRender
+        //  Layer 30: SurfaceFX
+        //  Layer 31: Vectors
+        /// </summary>
+        private static readonly int LAYER_MASK = 
+        ~(
+            (1 << 0 ) |     // Default
+            (1 << 11) |     // UIDialog
+            (1 << 1 ) |     // TransparentFX
+            (1 << 5 ) |     // UI
+            (1 << 12) |     // UIVectors
+            (1 << 13) |     // UI_Mask
+            (1 << 14) |     // Screens
+            (1 << 25) |     // UIAdditional
+            (1 << 10) |     // Scaled Scenery
+            (1 << 21)       // Part Triggers
+        );
+
         private Part previousPart;
         private Vector3 previousPosition;
         private Quaternion previousRotation;
@@ -20,6 +72,9 @@ namespace com.github.lhervier.ksp {
         }
 
         private static void LogDebug(string message) {
+            if( !DEBUG ) {
+                return;
+            }
             LogInternal("DEBUG", message);
         }
 
@@ -27,8 +82,41 @@ namespace com.github.lhervier.ksp {
             LogInternal("ERROR", message);
         }
 
+        private static void InitDebugMode() {
+            try {
+                // Get the directory where the mod DLL is located
+                string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                string modDirectory = Path.GetDirectoryName(dllPath);
+                string configPath = Path.Combine(modDirectory, CONFIG_FILE);
+
+                if (File.Exists(configPath)) {
+                    string[] lines = File.ReadAllLines(configPath);
+                    foreach (string line in lines) {
+                        string trimmedLine = line.Trim();
+                        if( trimmedLine.StartsWith("#") ) {
+                            continue;
+                        }
+                        if (trimmedLine.StartsWith("debug=")) {
+                            string value = trimmedLine.Substring(6).Trim().ToLower();
+                            DEBUG = (value == "true" || value == "1" || value == "yes");
+                            break;
+                        }
+                        if (trimmedLine.StartsWith("ground_offset=")) {
+                            string value = trimmedLine.Substring(14).Trim();
+                            GROUND_OFFSET = float.Parse(value);
+                            break;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) {
+                Debug.LogError($"[EvaCMGroundMod] Error reading config file: {ex.Message}");
+            }
+        }
+
         protected void Awake() 
         {
+            InitDebugMode();
             LogInfo("Awaked");
             DontDestroyOnLoad(this);
         }
@@ -58,26 +146,8 @@ namespace com.github.lhervier.ksp {
 
         // ==============================================================================================
 
-        private int GetLayerMask(Collider collider) {
-            return ~((1 << collider.gameObject.layer) |     // The collider layer
-                             (1 << 11) |                                // UIDialog
-                             (1 << 1) |                                 // TransparentFX
-                             (1 << 5) |                                 // UI
-                             (1 << 12) |                                // UIVectors
-                             (1 << 13) |                                // UI_Mask
-                             (1 << 14) |                                // Screens
-                             (1 << 25) |                                // UIAdditional
-                             (1 << 10));                                // Scaled Scenery
-        }
-
-        private void LogColliders(Collider[] colliders) {
-            foreach (Collider collider in colliders) {
-                LogDebug($"=> Collision with : {collider.name} on layer {collider.gameObject.layer} ({LayerMask.LayerToName(collider.gameObject.layer)})");
-            }
-        }
-
         bool IsCollidingWithGround(Collider collider) {
-            Collider[] colliders = null;
+            Collider[] colliders;
             if (collider is BoxCollider boxCollider) {
                 colliders = GetBoxColliders(boxCollider);
             }
@@ -94,28 +164,55 @@ namespace com.github.lhervier.ksp {
                 LogError($"Unsupported collider type : {collider.GetType().Name} (position: {collider.transform.position})");
                 colliders = new Collider[0];
             }
-            LogColliders(colliders);
+            foreach (Collider coll in colliders) {
+                LogDebug($"=> Collision with : {coll.name} on layer {coll.gameObject.layer} ({LayerMask.LayerToName(coll.gameObject.layer)})");
+            }
             return colliders.Length > 0;
         }
 
+        float GetScale(Collider collider) {
+            Vector3 colliderScale = collider.transform.lossyScale;
+            float epsilon = 0.0001f;  // Tolérance pour la comparaison de floats
+            if( 
+                Mathf.Abs(colliderScale.x - colliderScale.y) > epsilon || 
+                Mathf.Abs(colliderScale.y - colliderScale.z) > epsilon
+            ) {
+                LogError($"Scale is not uniform: {colliderScale}");
+                return 1.0f;
+            }
+            return Mathf.Abs(colliderScale.x);
+        }
+
+        Vector3 GetScaleAsVector3(Collider collider) {
+            float scale = GetScale(collider);
+            return new Vector3(scale, scale, scale);
+        }
+
         Collider[] GetBoxColliders(BoxCollider boxCollider) {
+            Vector3 scale = GetScaleAsVector3(boxCollider);
+            
+            Vector3 center = boxCollider.transform.position - Vector3.up * GROUND_OFFSET;  // Adding 0.01 unit up to avoid collision with the ground
+            Vector3 scaledSize = Vector3.Scale(boxCollider.size, scale);
+            Quaternion rotation = boxCollider.transform.rotation;
+
             return Physics.OverlapBox(
-                boxCollider.transform.position - Vector3.up * 0.01f,  // Décalage de 0.01 unités vers le haut
-                boxCollider.size * 0.5f,
-                boxCollider.transform.rotation,
-                GetLayerMask(boxCollider)
+                center,
+                scaledSize * 0.5f,
+                rotation,
+                LAYER_MASK
             );
         }
 
         Collider[] GetCapsuleColliders(CapsuleCollider capsuleCollider) {
-            // On a le centre de la capsule, son rayon, sa hauteur et sa rotation.
-            Vector3 center = capsuleCollider.transform.position - Vector3.up * 0.01f;  // Décalage de 0.01 unités vers le haut
-            float radius = capsuleCollider.radius;
-            float height = capsuleCollider.height - (2 * radius);
+            Vector3 center = capsuleCollider.transform.position - Vector3.up * GROUND_OFFSET;  // Adding 0.01 unit up to avoid collision with the ground
+            float scale = GetScale(capsuleCollider);
+            float scaledRadius = capsuleCollider.radius * scale;
+            float scaledHeight = capsuleCollider.height * scale;
+            float height = scaledHeight - (2 * scaledRadius);
             Quaternion rotation = capsuleCollider.transform.rotation;
             int direction = capsuleCollider.direction;
             
-            // On calcule la direction de la capsule.
+            // Calculating the direction of the capsule.
             Vector3 directionVector;
             switch (direction)
             {
@@ -133,37 +230,46 @@ namespace com.github.lhervier.ksp {
                     break;
             }
             
-            // On calcul les deux points qui définissent la capsule.
+            // Calculating the two points that define the capsule.
             Vector3 point1 = center - directionVector * (height * 0.5f);
             Vector3 point2 = center + directionVector * (height * 0.5f);
             
-            // On retourne les colliders qui intersectent la capsule.
+            // Returning the colliders that intersect the capsule.
             return Physics.OverlapCapsule(
                 point1,
                 point2,
-                radius,
-                GetLayerMask(capsuleCollider)
+                scaledRadius,
+                LAYER_MASK
             );
         }
 
         Collider[] GetSphereColliders(SphereCollider sphereCollider) {
+            float scale = GetScale(sphereCollider);
+            float scaledRadius = sphereCollider.radius * scale;
+            
             return Physics.OverlapSphere(
-                sphereCollider.transform.position - Vector3.up * 0.01f,  // Décalage de 0.01 unités vers le haut
-                sphereCollider.radius,
-                GetLayerMask(sphereCollider)
+                sphereCollider.transform.position - Vector3.up * GROUND_OFFSET,  // Adding 0.01 unit up to avoid collision with the ground
+                scaledRadius,
+                LAYER_MASK
             );
         }
 
         Collider[] GetMeshColliders(MeshCollider meshCollider) {
-            // On récupère tous les colliders dans la zone
-            Collider[] potentialColliders = Physics.OverlapBox(
-                meshCollider.bounds.center,
+            // Getting all the colliders in the zone
+            Vector3 scale = GetScaleAsVector3(meshCollider);
+            Vector3 scaledExtents = Vector3.Scale(
                 meshCollider.bounds.extents,
-                meshCollider.transform.rotation,
-                GetLayerMask(meshCollider)
+                scale
             );
 
-            // On filtre les colliders qui ont une pénétration réelle
+            Collider[] potentialColliders = Physics.OverlapBox(
+                meshCollider.bounds.center,
+                scaledExtents,
+                meshCollider.transform.rotation,
+                LAYER_MASK
+            );
+
+            // Filtering the colliders that have a real penetration
             List<Collider> penetratingColliders = new List<Collider>();
             foreach (Collider otherCollider in potentialColliders) {
                 if (Physics.ComputePenetration(
@@ -192,8 +298,6 @@ namespace com.github.lhervier.ksp {
                 return;
             }
 
-            LogDebug($"--------------------------------");
-            LogDebug($"onEditorPartEvent: {eventType} / {part.name} / {part.persistentId} / {part.transform.position} / {part.transform.rotation}");
             if( part != this.previousPart ) {
                 // Seems to stabilize the parts when changing.
                 if( previousPart != null ) {
@@ -204,10 +308,6 @@ namespace com.github.lhervier.ksp {
                 this.previousPart = part;
                 this.previousPosition = part.transform.position;
                 this.previousRotation = part.transform.rotation;
-                LogDebug($"=> New part. Using current position as previous position");
-            }
-            else {
-                LogDebug($"=> Using stored previous position: {this.previousPosition} / {this.previousRotation}");
             }
 
             // Checking altitude of the part center to see if it's below the ground
@@ -220,20 +320,14 @@ namespace com.github.lhervier.ksp {
             
             bool inGround = false;
             if (heightAboveTerrain < 0) {
-                LogDebug($"=> Part is below the ground. Restoring previous position and rotation to {this.previousPosition} / {this.previousRotation}");
                 inGround = true;
             }
             else {
-                LogDebug($"=> Part center is above the ground. We will check colliders");
                 Collider[] colliders = part.GetComponentsInChildren<Collider>();
                 foreach (Collider collider in colliders) {
                     if (IsCollidingWithGround(collider)) {
-                        LogDebug($"=> Collider {collider.GetType().Name} is in conflict with the ground ! Restoring previous position and rotation to {this.previousPosition} / {this.previousRotation}");
                         inGround = true;
                         break;
-                    }
-                    else {
-                        LogDebug($"=> Collider {collider.GetType().Name} is not in conflict with the ground...");
                     }
                 }
             }
