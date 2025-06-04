@@ -76,7 +76,7 @@ namespace com.github.lhervier.ksp {
             }
         }
 
-        bool IsGrounded(Collider collider) {
+        bool IsCollidingWithGround(Collider collider) {
             Collider[] colliders = null;
             if (collider is BoxCollider boxCollider) {
                 colliders = GetBoxColliders(boxCollider);
@@ -210,21 +210,41 @@ namespace com.github.lhervier.ksp {
                 LogDebug($"=> Using stored previous position: {this.previousPosition} / {this.previousRotation}");
             }
 
-            Collider[] colliders = part.GetComponentsInChildren<Collider>();
-            foreach (Collider collider in colliders) {
-                if (IsGrounded(collider)) {
-                    LogDebug($"=> Collider {collider.GetType().Name} is Grounded ! Restoring previous position and rotation to {this.previousPosition} / {this.previousRotation}");
-                    part.transform.position = this.previousPosition;
-                    part.transform.rotation = this.previousRotation;
-                    break;
-                }
-                else {
-                    LogDebug($"=> Collider {collider.GetType().Name} is not grounded...");
+            // Checking altitude of the part center to see if it's below the ground
+            double partCenterLatitude = FlightGlobals.currentMainBody.GetLatitude(part.transform.position);
+            double partCenterLongitude = FlightGlobals.currentMainBody.GetLongitude(part.transform.position);
+            double partCenterAltitude = FlightGlobals.currentMainBody.GetAltitude(part.transform.position);
+
+            double terrainAltitude = FlightGlobals.currentMainBody.TerrainAltitude(partCenterLatitude, partCenterLongitude, true);
+            double heightAboveTerrain = partCenterAltitude - terrainAltitude;
+            
+            bool inGround = false;
+            if (heightAboveTerrain < 0) {
+                LogDebug($"=> Part is below the ground. Restoring previous position and rotation to {this.previousPosition} / {this.previousRotation}");
+                inGround = true;
+            }
+            else {
+                LogDebug($"=> Part center is above the ground. We will check colliders");
+                Collider[] colliders = part.GetComponentsInChildren<Collider>();
+                foreach (Collider collider in colliders) {
+                    if (IsCollidingWithGround(collider)) {
+                        LogDebug($"=> Collider {collider.GetType().Name} is in conflict with the ground ! Restoring previous position and rotation to {this.previousPosition} / {this.previousRotation}");
+                        inGround = true;
+                        break;
+                    }
+                    else {
+                        LogDebug($"=> Collider {collider.GetType().Name} is not in conflict with the ground...");
+                    }
                 }
             }
-            
-            this.previousPosition = part.transform.position;
-            this.previousRotation = part.transform.rotation;
+
+            if( inGround ) {
+                part.transform.position = this.previousPosition;
+                part.transform.rotation = this.previousRotation;
+            } else {
+                this.previousPosition = part.transform.position;
+                this.previousRotation = part.transform.rotation;
+            }
         }
     }
 }
