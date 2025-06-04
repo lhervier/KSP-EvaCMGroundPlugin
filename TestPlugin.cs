@@ -73,6 +73,12 @@ namespace com.github.lhervier.ksp {
                              (1 << 10));                                // Scaled Scenery
         }
 
+        private void LogColliders(Collider[] colliders) {
+            foreach (Collider collider in colliders) {
+                Log($"=> Collision with : {collider.name} on layer {collider.gameObject.layer} ({LayerMask.LayerToName(collider.gameObject.layer)})");
+            }
+        }
+
         bool IsBoxGrounded(BoxCollider boxCollider) {
             Log($"IsBoxGrounded: {boxCollider.name}");
             Collider[] colliders = Physics.OverlapBox(
@@ -81,13 +87,7 @@ namespace com.github.lhervier.ksp {
                 boxCollider.transform.rotation,
                 GetLayerMask(boxCollider)
             );
-            
-            if (colliders.Length > 0) {
-                foreach (Collider collider in colliders) {
-                    Log($"=> Collision with : {collider.name} on layer {collider.gameObject.layer} ({LayerMask.LayerToName(collider.gameObject.layer)})");
-                }
-            }
-            
+            LogColliders(colliders);
             return colliders.Length > 0;
         }
 
@@ -98,22 +98,26 @@ namespace com.github.lhervier.ksp {
             float height = capsuleCollider.height;
             Vector3 direction = capsuleCollider.transform.up;
             
-            return Physics.CheckCapsule(
+            Collider[] colliders = Physics.OverlapCapsule(
                 center - direction * (height * 0.5f),
                 center + direction * (height * 0.5f),
                 radius,
                 GetLayerMask(capsuleCollider)
             );
+            LogColliders(colliders);
+            return colliders.Length > 0;
         }
 
         bool IsSphereGrounded(SphereCollider sphereCollider) {
             Log($"IsSphereGrounded: {sphereCollider.name}");
             
-            return Physics.CheckSphere(
+            Collider[] colliders = Physics.OverlapSphere(
                 sphereCollider.transform.position,
                 sphereCollider.radius,
                 GetLayerMask(sphereCollider)
             );
+            LogColliders(colliders);
+            return colliders.Length > 0;
         }
 
         private void OnEditorPartEvent(ConstructionEventType eventType, Part part) {
