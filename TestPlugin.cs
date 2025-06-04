@@ -14,6 +14,12 @@ namespace com.github.lhervier.ksp {
             Debug.Log("[TestPlugin] " + message);
         }
 
+        protected void Awake() 
+        {
+            Log("Awaked");
+            DontDestroyOnLoad(this);
+        }
+
         public void Start() {
             GameEvents.onEditorPartEvent.Add(OnEditorPartEvent);
             
@@ -148,6 +154,10 @@ namespace com.github.lhervier.ksp {
             });
             
             Log("Plugin started");
+        }
+
+        public void OnDestroy() {
+            Log("Plugin stopped");
         }
 
         // ==============================================================================================
