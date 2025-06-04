@@ -100,8 +100,8 @@ namespace com.github.lhervier.ksp {
 
         Collider[] GetBoxColliders(BoxCollider boxCollider) {
             return Physics.OverlapBox(
-                boxCollider.bounds.center,
-                boxCollider.bounds.extents,
+                boxCollider.transform.position,
+                boxCollider.size * 0.5f,
                 boxCollider.transform.rotation,
                 GetLayerMask(boxCollider)
             );
@@ -109,7 +109,7 @@ namespace com.github.lhervier.ksp {
 
         Collider[] GetCapsuleColliders(CapsuleCollider capsuleCollider) {
             // On a le centre de la capsule, son rayon, sa hauteur et sa rotation.
-            Vector3 center = capsuleCollider.bounds.center;
+            Vector3 center = capsuleCollider.transform.position;
             float radius = capsuleCollider.radius;
             float height = capsuleCollider.height - (2 * radius);
             Quaternion rotation = capsuleCollider.transform.rotation;
