@@ -155,12 +155,32 @@ namespace com.github.lhervier.ksp {
         }
 
         Collider[] GetMeshColliders(MeshCollider meshCollider) {
-            return Physics.OverlapBox(
+            // On récupère tous les colliders dans la zone
+            Collider[] potentialColliders = Physics.OverlapBox(
                 meshCollider.bounds.center,
                 meshCollider.bounds.extents,
                 meshCollider.transform.rotation,
                 GetLayerMask(meshCollider)
             );
+
+            // On filtre les colliders qui ont une pénétration réelle
+            List<Collider> penetratingColliders = new List<Collider>();
+            foreach (Collider otherCollider in potentialColliders) {
+                if (Physics.ComputePenetration(
+                    meshCollider, 
+                    meshCollider.transform.position, 
+                    meshCollider.transform.rotation,
+                    otherCollider, 
+                    otherCollider.transform.position, 
+                    otherCollider.transform.rotation,
+                    out Vector3 direction, 
+                    out float distance
+                )) {
+                    penetratingColliders.Add(otherCollider);
+                }
+            }
+
+            return penetratingColliders.ToArray();
         }
 
         private void OnEditorPartEvent(ConstructionEventType eventType, Part part) {
