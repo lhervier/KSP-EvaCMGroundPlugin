@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Expansions.Missions.Editor;
 using UnityEngine;
 
 namespace com.github.lhervier.ksp {
@@ -9,7 +10,7 @@ namespace com.github.lhervier.ksp {
         private Part previousPart;
         private Vector3 previousPosition;
         private Quaternion previousRotation;
-
+        
         private static void LogInternal(string level, string message) {
             Debug.Log($"[TestPlugin][{level}] {message}");
         }
@@ -86,6 +87,9 @@ namespace com.github.lhervier.ksp {
             else if (collider is SphereCollider sphereCollider) {
                 colliders = GetSphereColliders(sphereCollider);
             }
+            else if (collider is MeshCollider meshCollider) {
+                colliders = GetMeshColliders(meshCollider);
+            }
             else {
                 LogError($"Unsupported collider type : {collider.GetType().Name} (position: {collider.transform.position})");
                 colliders = new Collider[0];
@@ -104,20 +108,58 @@ namespace com.github.lhervier.ksp {
         }
 
         Collider[] GetCapsuleColliders(CapsuleCollider capsuleCollider) {
-            return Physics.OverlapBox(
-                capsuleCollider.bounds.center,
-                capsuleCollider.bounds.extents,
-                capsuleCollider.transform.rotation,
+            // On a le centre de la capsule, son rayon, sa hauteur et sa rotation.
+            Vector3 center = capsuleCollider.bounds.center;
+            float radius = capsuleCollider.radius;
+            float height = capsuleCollider.height - (2 * radius);
+            Quaternion rotation = capsuleCollider.transform.rotation;
+            int direction = capsuleCollider.direction;
+            
+            // On calcule la direction de la capsule.
+            Vector3 directionVector;
+            switch (direction)
+            {
+                case 0: // X-axis
+                    directionVector = rotation * Vector3.right;  // (1, 0, 0)
+                    break;
+                case 1: // Y-axis
+                    directionVector = rotation * Vector3.up;     // (0, 1, 0)
+                    break;
+                case 2: // Z-axis
+                    directionVector = rotation * Vector3.forward; // (0, 0, 1)
+                    break;
+                default:
+                    directionVector = rotation * Vector3.up;
+                    break;
+            }
+            
+            // On calcul les deux points qui définissent la capsule.
+            Vector3 point1 = center - directionVector * (height * 0.5f);
+            Vector3 point2 = center + directionVector * (height * 0.5f);
+            
+            // On retourne les colliders qui intersectent la capsule.
+            return Physics.OverlapCapsule(
+                point1,
+                point2,
+                radius,
                 GetLayerMask(capsuleCollider)
             );
         }
 
         Collider[] GetSphereColliders(SphereCollider sphereCollider) {
-            return Physics.OverlapBox(
-                sphereCollider.bounds.center,
-                sphereCollider.bounds.extents,
-                sphereCollider.transform.rotation,
+            return Physics.OverlapSphere(
+                sphereCollider.transform.position,
+                sphereCollider.radius,
                 GetLayerMask(sphereCollider)
+            );
+        }
+
+        Collider[] GetMeshColliders(MeshCollider meshCollider) {
+            return Physics.OverlapBox(
+                meshCollider.bounds.center,
+                meshCollider.bounds.extents,
+                meshCollider.transform.rotation,
+                GetLayerMask(meshCollider)
             );
         }
 
@@ -127,13 +169,18 @@ namespace com.github.lhervier.ksp {
                 part.transform.position == this.previousPosition && 
                 part.transform.rotation == this.previousRotation 
             ) {
-                LogDebug($"=> No change to part, position and rotation. Skipping...");
                 return;
             }
 
             LogDebug($"--------------------------------");
             LogDebug($"onEditorPartEvent: {eventType} / {part.name} / {part.persistentId} / {part.transform.position} / {part.transform.rotation}");
             if( part != this.previousPart ) {
+                // Seems to stabilize the parts when changing.
+                if( previousPart != null ) {
+                    this.previousPart.transform.position = this.previousPosition;
+                    this.previousPart.transform.rotation = this.previousRotation;
+                }
+                
                 this.previousPart = part;
                 this.previousPosition = part.transform.position;
                 this.previousRotation = part.transform.rotation;
@@ -146,13 +193,13 @@ namespace com.github.lhervier.ksp {
             Collider[] colliders = part.GetComponentsInChildren<Collider>();
             foreach (Collider collider in colliders) {
                 if (IsGrounded(collider)) {
-                    LogDebug($"=> Grounded ! Restoring previous position and rotation to {this.previousPosition} / {this.previousRotation}");
+                    LogDebug($"=> Collider {collider.GetType().Name} is Grounded ! Restoring previous position and rotation to {this.previousPosition} / {this.previousRotation}");
                     part.transform.position = this.previousPosition;
                     part.transform.rotation = this.previousRotation;
                     break;
                 }
                 else {
-                    LogDebug($"=> Not grounded...");
+                    LogDebug($"=> Collider {collider.GetType().Name} is not grounded...");
                 }
             }
             
