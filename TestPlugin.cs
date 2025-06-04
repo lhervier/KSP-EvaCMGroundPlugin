@@ -10,35 +10,47 @@ namespace com.github.lhervier.ksp {
         private Vector3 previousPosition;
         private Quaternion previousRotation;
 
-        private void Log(string message) {
-            Debug.Log("[TestPlugin] " + message);
+        private static void LogInternal(string level, string message) {
+            Debug.Log($"[TestPlugin][{level}] {message}");
+        }
+
+        private static void LogInfo(string message) {
+            LogInternal("INFO", message);
+        }
+
+        private static void LogDebug(string message) {
+            LogInternal("DEBUG", message);
+        }
+
+        private static void LogError(string message) {
+            LogInternal("ERROR", message);
         }
 
         protected void Awake() 
         {
-            Log("Awaked");
+            LogInfo("Awaked");
             DontDestroyOnLoad(this);
         }
 
         public void Start() {
             GameEvents.OnEVAConstructionMode.Add(OnEVAConstructionMode);
-            Log("Plugin started");
+            LogInfo("Plugin started");
         }
 
         public void OnDestroy() {
             GameEvents.onEditorPartEvent.Remove(OnEditorPartEvent);
             GameEvents.OnEVAConstructionMode.Remove(OnEVAConstructionMode);
-            Log("Plugin stopped");
+            LogInfo("Plugin stopped");
         }
 
         public void OnEVAConstructionMode(bool mode) {
-            Log($"OnEVAConstructionMode: {mode}");
+            LogDebug($"OnEVAConstructionMode: {mode}");
             if( mode ) {
-                Log("Starting Fix");
+                LogDebug("Starting Fix");
                 GameEvents.onEditorPartEvent.Add(OnEditorPartEvent);
             }
             else {
-                Log("Stopping Fix");
+                LogDebug("Stopping Fix");
                 GameEvents.onEditorPartEvent.Remove(OnEditorPartEvent);
             }
         }
@@ -56,7 +68,7 @@ namespace com.github.lhervier.ksp {
                 return IsSphereGrounded(sphereCollider);
             }
             else {
-                Log($"ERROR : Unsupported collider: {collider.name} (position: {collider.transform.position})");
+                LogError($"Unsupported collider: {collider.name} (position: {collider.transform.position})");
                 return false;
             }
         }
@@ -75,12 +87,12 @@ namespace com.github.lhervier.ksp {
 
         private void LogColliders(Collider[] colliders) {
             foreach (Collider collider in colliders) {
-                Log($"=> Collision with : {collider.name} on layer {collider.gameObject.layer} ({LayerMask.LayerToName(collider.gameObject.layer)})");
+                LogDebug($"=> Collision with : {collider.name} on layer {collider.gameObject.layer} ({LayerMask.LayerToName(collider.gameObject.layer)})");
             }
         }
 
         bool IsBoxGrounded(BoxCollider boxCollider) {
-            Log($"IsBoxGrounded: {boxCollider.name}");
+            LogDebug($"IsBoxGrounded: {boxCollider.name}");
             Collider[] colliders = Physics.OverlapBox(
                 boxCollider.bounds.center,
                 boxCollider.bounds.extents,
@@ -92,7 +104,7 @@ namespace com.github.lhervier.ksp {
         }
 
         bool IsCapsuleGrounded(CapsuleCollider capsuleCollider) {
-            Log($"IsCapsuleGrounded: {capsuleCollider.name}");
+            LogDebug($"IsCapsuleGrounded: {capsuleCollider.name}");
             Vector3 center = capsuleCollider.transform.position;
             float radius = capsuleCollider.radius;
             float height = capsuleCollider.height;
@@ -109,7 +121,7 @@ namespace com.github.lhervier.ksp {
         }
 
         bool IsSphereGrounded(SphereCollider sphereCollider) {
-            Log($"IsSphereGrounded: {sphereCollider.name}");
+            LogDebug($"IsSphereGrounded: {sphereCollider.name}");
             
             Collider[] colliders = Physics.OverlapSphere(
                 sphereCollider.transform.position,
@@ -126,32 +138,32 @@ namespace com.github.lhervier.ksp {
                 part.transform.position == this.previousPosition && 
                 part.transform.rotation == this.previousRotation 
             ) {
-                Log($"=> No change to part, position and rotation. Skipping...");
+                LogDebug($"=> No change to part, position and rotation. Skipping...");
                 return;
             }
 
-            Log($"--------------------------------");
-            Log($"onEditorPartEvent: {eventType} / {part.name} / {part.persistentId} / {part.transform.position} / {part.transform.rotation}");
+            LogDebug($"--------------------------------");
+            LogDebug($"onEditorPartEvent: {eventType} / {part.name} / {part.persistentId} / {part.transform.position} / {part.transform.rotation}");
             if( part != this.previousPart ) {
                 this.previousPart = part;
                 this.previousPosition = part.transform.position;
                 this.previousRotation = part.transform.rotation;
-                Log($"=> New part. Using current position as previous position");
+                LogDebug($"=> New part. Using current position as previous position");
             }
             else {
-                Log($"=> Using stored previous position: {this.previousPosition} / {this.previousRotation}");
+                LogDebug($"=> Using stored previous position: {this.previousPosition} / {this.previousRotation}");
             }
 
             Collider[] colliders = part.GetComponentsInChildren<Collider>();
             foreach (Collider collider in colliders) {
                 if (IsGrounded(collider)) {
-                    Log($"=> Grounded ! Restoring previous position and rotation to {this.previousPosition} / {this.previousRotation}");
+                    LogDebug($"=> Grounded ! Restoring previous position and rotation to {this.previousPosition} / {this.previousRotation}");
                     part.transform.position = this.previousPosition;
                     part.transform.rotation = this.previousRotation;
                     break;
                 }
                 else {
-                    Log($"=> Not grounded...");
+                    LogDebug($"=> Not grounded...");
                 }
             }
             
