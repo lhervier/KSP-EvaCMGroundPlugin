@@ -57,22 +57,6 @@ namespace com.github.lhervier.ksp {
 
         // ==============================================================================================
 
-        bool IsGrounded(Collider collider) {
-            if (collider is BoxCollider boxCollider) {
-                return IsBoxGrounded(boxCollider);
-            }
-            else if (collider is CapsuleCollider capsuleCollider) {
-                return IsCapsuleGrounded(capsuleCollider);
-            }
-            else if (collider is SphereCollider sphereCollider) {
-                return IsSphereGrounded(sphereCollider);
-            }
-            else {
-                LogError($"Unsupported collider: {collider.name} (position: {collider.transform.position})");
-                return false;
-            }
-        }
-
         private int GetLayerMask(Collider collider) {
             return ~((1 << collider.gameObject.layer) |     // The collider layer
                              (1 << 11) |                                // UIDialog
@@ -91,45 +75,50 @@ namespace com.github.lhervier.ksp {
             }
         }
 
-        bool IsBoxGrounded(BoxCollider boxCollider) {
-            LogDebug($"IsBoxGrounded: {boxCollider.name}");
-            Collider[] colliders = Physics.OverlapBox(
+        bool IsGrounded(Collider collider) {
+            Collider[] colliders = null;
+            if (collider is BoxCollider boxCollider) {
+                colliders = GetBoxColliders(boxCollider);
+            }
+            else if (collider is CapsuleCollider capsuleCollider) {
+                colliders = GetCapsuleColliders(capsuleCollider);
+            }
+            else if (collider is SphereCollider sphereCollider) {
+                colliders = GetSphereColliders(sphereCollider);
+            }
+            else {
+                LogError($"Unsupported collider type : {collider.GetType().Name} (position: {collider.transform.position})");
+                colliders = new Collider[0];
+            }
+            LogColliders(colliders);
+            return colliders.Length > 0;
+        }
+
+        Collider[] GetBoxColliders(BoxCollider boxCollider) {
+            return Physics.OverlapBox(
                 boxCollider.bounds.center,
                 boxCollider.bounds.extents,
                 boxCollider.transform.rotation,
                 GetLayerMask(boxCollider)
             );
-            LogColliders(colliders);
-            return colliders.Length > 0;
         }
 
-        bool IsCapsuleGrounded(CapsuleCollider capsuleCollider) {
-            LogDebug($"IsCapsuleGrounded: {capsuleCollider.name}");
-            Vector3 center = capsuleCollider.transform.position;
-            float radius = capsuleCollider.radius;
-            float height = capsuleCollider.height;
-            Vector3 direction = capsuleCollider.transform.up;
-            
-            Collider[] colliders = Physics.OverlapCapsule(
-                center - direction * (height * 0.5f),
-                center + direction * (height * 0.5f),
-                radius,
+        Collider[] GetCapsuleColliders(CapsuleCollider capsuleCollider) {
+            return Physics.OverlapBox(
+                capsuleCollider.bounds.center,
+                capsuleCollider.bounds.extents,
+                capsuleCollider.transform.rotation,
                 GetLayerMask(capsuleCollider)
             );
-            LogColliders(colliders);
-            return colliders.Length > 0;
         }
 
-        bool IsSphereGrounded(SphereCollider sphereCollider) {
-            LogDebug($"IsSphereGrounded: {sphereCollider.name}");
-            
-            Collider[] colliders = Physics.OverlapSphere(
-                sphereCollider.transform.position,
-                sphereCollider.radius,
+        Collider[] GetSphereColliders(SphereCollider sphereCollider) {
+            return Physics.OverlapBox(
+                sphereCollider.bounds.center,
+                sphereCollider.bounds.extents,
+                sphereCollider.transform.rotation,
                 GetLayerMask(sphereCollider)
             );
-            LogColliders(colliders);
-            return colliders.Length > 0;
         }
 
         private void OnEditorPartEvent(ConstructionEventType eventType, Part part) {
