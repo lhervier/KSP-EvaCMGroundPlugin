@@ -1,7 +1,7 @@
 using System.Reflection;
 
-[assembly: AssemblyTitle("TestPlugin")]
-[assembly: AssemblyDescription("Plugin de Test pour KSP")]
+[assembly: AssemblyTitle("EvaCMGroundMod")]
+[assembly: AssemblyDescription("Mod disabling the positionning of parts in the ground when in EVA construction mode")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("")]

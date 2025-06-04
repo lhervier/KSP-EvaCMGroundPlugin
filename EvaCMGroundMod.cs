@@ -5,14 +5,14 @@ using UnityEngine;
 namespace com.github.lhervier.ksp {
 	
 	[KSPAddon(KSPAddon.Startup.PSystemSpawn, false)]
-    public class TestPlugin : MonoBehaviour {
+    public class EvaCMGroundMod : MonoBehaviour {
         
         private Part previousPart;
         private Vector3 previousPosition;
         private Quaternion previousRotation;
         
         private static void LogInternal(string level, string message) {
-            Debug.Log($"[TestPlugin][{level}] {message}");
+            Debug.Log($"[EvaCMGroundMod][{level}] {message}");
         }
 
         private static void LogInfo(string message) {
