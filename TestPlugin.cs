@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace com.github.lhervier.ksp {
@@ -5,6 +6,9 @@ namespace com.github.lhervier.ksp {
 	[KSPAddon(KSPAddon.Startup.PSystemSpawn, false)]
     public class TestPlugin : MonoBehaviour {
         
+        private Part previousPart;
+        private Vector3d previousPosition;
+
         private void Log(string message) {
             Debug.Log("[TestPlugin] " + message);
         }
@@ -147,152 +151,81 @@ namespace com.github.lhervier.ksp {
 
         // ==============================================================================================
 
-        private Vector3[] GetColliderCorners(Collider collider) {
+        bool IsGrounded(Collider collider) {
             if (collider is BoxCollider boxCollider) {
-                Log($"=> BoxCollider (center: {boxCollider.center}, size: {boxCollider.size})");
-                
-                Vector3 center = boxCollider.center;
-                Vector3 size = boxCollider.size;
-                
-                // Calculer les 8 coins du box collider dans l'espace local
-                // On est sûr que notre objet est à l'intérieur de l'espace défini par ces 8 points.
-                return new Vector3[] {
-                    center + new Vector3(-size.x, -size.y, -size.z) * 0.5f,     // En bas à gauche
-                    center + new Vector3(size.x, -size.y, -size.z) * 0.5f,      // En bas à droite
-                    center + new Vector3(-size.x, size.y, -size.z) * 0.5f,      // En haut à gauche
-                    center + new Vector3(size.x, size.y, -size.z) * 0.5f,       // En haut à droite
-                    center + new Vector3(-size.x, -size.y, size.z) * 0.5f,      // En haut à gauche
-                    center + new Vector3(size.x, -size.y, size.z) * 0.5f,       // En bas à droite
-                    center + new Vector3(-size.x, size.y, size.z) * 0.5f,       // En haut à droite
-                    center + new Vector3(size.x, size.y, size.z) * 0.5f         // En bas à droite
-                };
-            }
-            else if (collider is SphereCollider sphereCollider) {
-                Log($"- SphereCollider: {sphereCollider.name} (center: {sphereCollider.center}, radius: {sphereCollider.radius})");
-                
-                // Pour un sphere collider, on vérifie le point le plus bas
-                Vector3 center = sphereCollider.center;
-                float radius = sphereCollider.radius;
-                
-                // Calculer le point le plus bas dans l'espace local
-                // FIXME: On ne prend pas en compte la rotation du collider
-                return new Vector3[] { center + new Vector3(0, -radius, 0) };
+                return IsGrounded(boxCollider);
             }
             else if (collider is CapsuleCollider capsuleCollider) {
-                Log($"- CapsuleCollider: {capsuleCollider.name} (center: {capsuleCollider.center}, radius: {capsuleCollider.radius}, height: {capsuleCollider.height})");
-
-                // Pour un capsule collider, on vérifie les points les plus bas
-                // FIXME: On ne prend pas en compte la rotation du collider
-                Vector3 center = capsuleCollider.center;
-                float radius = capsuleCollider.radius;
-                float height = capsuleCollider.height;
-                
-                // Calculer les points les plus bas dans l'espace local
-                return new Vector3[] {
-                    center + new Vector3(-radius, -height * 0.5f, 0),
-                    center + new Vector3(radius, -height * 0.5f, 0)
-                };
+                return IsGrounded(capsuleCollider);
             }
-            
-            // Pour les autres types de colliders, on vérifie juste le centre
-            Log($"- Other collider: {collider.name} (position: {collider.transform.position})");
-            return new Vector3[] { collider.transform.position };
+            else if (collider is SphereCollider sphereCollider) {
+                return IsGrounded(sphereCollider);
+            }
+            else {
+                Log($"ERROR : Unsupported collider: {collider.name} (position: {collider.transform.position})");
+                return false;
+            }
         }
 
-        private double GetAltitudeAboveGround(Part part) {
-            Log("--------------------------------");
-            Log($"GetAltitudeAboveGround: {part.name}:{part.persistentId}");
+        bool IsGrounded(BoxCollider boxCollider) {
+            Log($"IsGrounded(BoxCollider): {boxCollider.name}");
+            return Physics.CheckBox(
+                boxCollider.transform.position,
+                boxCollider.size * 0.5f,
+                boxCollider.transform.rotation,
+                LayerMask.GetMask("TerrainColliders")
+            );
+        }
+
+        bool IsGrounded(CapsuleCollider capsuleCollider) {
+            Log($"IsGrounded(CapsuleCollider): {capsuleCollider.name}");
+            Vector3 center = capsuleCollider.transform.position;
+            float radius = capsuleCollider.radius;
+            float height = capsuleCollider.height;
+            Vector3 direction = capsuleCollider.transform.up;
             
-            Vector3d worldPosition = part.transform.position;
-            Quaternion worldRotation = part.transform.rotation;
-            Vector3d worldForward = worldRotation * Vector3.forward;
-            Vector3d worldUp = worldRotation * Vector3.up;
-            Vector3d worldRight = worldRotation * Vector3.right;
-            Log($"- World (Relative to Unity scene) :");
-            Log($"  - Position: {worldPosition}");
-            Log($"  - Rotation (Euler): {worldRotation.eulerAngles}");
-            Log($"  - Forward: {worldForward}");
-            Log($"  - Up: {worldUp}");
-            Log($"  - Right: {worldRight}");
-            
-            Vector3d localPosition = part.transform.localPosition;
-            Quaternion localRotation = part.transform.localRotation;
-            Vector3d localForward = localRotation * Vector3.forward;
-            Vector3d localUp = localRotation * Vector3.up;
-            Vector3d localRight = localRotation * Vector3.right;
-            Log($"- From Parent:");
-            Log($"  - Position: {localPosition}");
-            Log($"  - Rotation (Euler): {localRotation.eulerAngles}");
-            Log($"  - Forward: {localForward}");
-            Log($"  - Up: {localUp}");
-            Log($"  - Right: {localRight}");
-            
-            double latitude = FlightGlobals.currentMainBody.GetLatitude(worldPosition);
-            double longitude = FlightGlobals.currentMainBody.GetLongitude(worldPosition);
-            double altitude = FlightGlobals.currentMainBody.GetAltitude(worldPosition);
-            Log($"- KSP position (Relative to main body) : ");
-            Log($"  - Latitude: {latitude}");
-            Log($"  - Longitude: {longitude}");
-            Log($"  - Altitude: {altitude}");
+            return Physics.CheckCapsule(
+                center - direction * (height * 0.5f),
+                center + direction * (height * 0.5f),
+                radius,
+                LayerMask.GetMask("TerrainColliders")
+            );
+        }
 
-
-            Log($"- Terrain altitude: {FlightGlobals.currentMainBody.TerrainAltitude(latitude, longitude, true)}");
-
-            // Obtenir tous les colliders de la pièce
-            Collider[] colliders = part.GetComponentsInChildren<Collider>();
-            
-            double minAltitudeAboveGround = float.MaxValue;
-
-            foreach (Collider collider in colliders) {
-                Log($"Collider: {collider.name}");
-
-                // Obtenir les points de collision (les coins du collider)
-                // Dans les coordonnées locales
-                Vector3[] corners = GetColliderCorners(collider);
-                foreach (Vector3 corner in corners) {
-                    Log($"- Corner (local): {corner}");
-                    Vector3 worldCorner = collider.transform.TransformPoint(corner);
-                    Log($"  - Corner (world): {worldCorner}");
-
-                    // Convertir la position en coordonnées géographiques
-                    double cornerLatitude = FlightGlobals.currentMainBody.GetLatitude(worldCorner);
-                    double cornerLongitude = FlightGlobals.currentMainBody.GetLongitude(worldCorner);
-                    double cornerAltitude = FlightGlobals.currentMainBody.GetAltitude(worldCorner);
-                    Log($"  - Latitude: {cornerLatitude} - Longitude: {cornerLongitude} - Altitude: {cornerAltitude}");
-                    
-                    // Obtenir la hauteur du terrain à cette position
-                    double terrainAltitude = FlightGlobals.currentMainBody.TerrainAltitude(cornerLatitude, cornerLongitude, true);
-                    Log($"  - Terrain altitude: {terrainAltitude}");
-
-                    // Si un seul point est sous le terrain, la pièce est considérée comme sous terre
-                    double altitudeAboveGround = cornerAltitude - terrainAltitude;
-                    Log($"  => Altitude above ground: {altitudeAboveGround}");
-                    if (altitudeAboveGround < minAltitudeAboveGround) {
-                        minAltitudeAboveGround = altitudeAboveGround;
-                    }
-                }
-            }
-            
-            Log($"=> Min altitude above ground: {minAltitudeAboveGround}");
-            Log("--------------------------------");
-            return minAltitudeAboveGround;
+        bool IsGrounded(SphereCollider sphereCollider) {
+            Log($"IsGrounded(SphereCollider): {sphereCollider.name}");
+            return Physics.CheckSphere(
+                sphereCollider.transform.position,
+                sphereCollider.radius,
+                LayerMask.GetMask("TerrainColliders")
+            );
         }
 
         private void OnEditorPartEvent(ConstructionEventType eventType, Part part) {
             Log($"onEditorPartEvent: {eventType} - {part.name}:{part.persistentId}");
 
-            double altitudeAboveGround = GetAltitudeAboveGround(part);
-            if (altitudeAboveGround < 0) {
-                Log($"Part {part.name} is below ground of {altitudeAboveGround}m");
-                float heightToAdd = (float) altitudeAboveGround * -1.0f + 0.1f;     // On prend une toute petite marge
-                Log($"  - heightToAdd: {heightToAdd}");
-                Log($"  - Actual part position (below ground): {part.transform.position}");
-                
-                // Ajoute la hauteur à la position de la pièce
-                part.transform.position += FlightGlobals.currentMainBody.transform.up * heightToAdd;
-                
-                Log($"=> New position (sticked to the ground): {part.transform.position}");
+            if( part != this.previousPart ) {
+                this.previousPart = part;
+                this.previousPosition = part.transform.position;
+                Log($"  - New part. Using current position as previous position: {this.previousPosition}");
             }
+            else {
+                Log($"  - Same part as previous. Using stored previous position: {this.previousPosition}");
+            }   
+            
+            Collider[] colliders = part.GetComponentsInChildren<Collider>();
+            foreach (Collider collider in colliders) {
+                Log($"Collider: {collider.name}");
+                if (IsGrounded(collider)) {
+                    Log($"=> Grounded ! Restoring previous position: {this.previousPosition}");
+                    part.transform.position = this.previousPosition;    
+                    break;
+                }
+                else {
+                    Log($"=> Not grounded...");
+                }
+            }
+            this.previousPosition = part.transform.position;
         }
     }
 }
