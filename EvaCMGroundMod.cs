@@ -155,6 +155,63 @@ namespace com.github.lhervier.ksp {
             );
         }
 
+        private Collider[] GetPenetratingColliders(
+            Collider collider,
+            Collider[] potentialColliders
+        ) {
+            // Filtering the colliders that have a real penetration
+            List<Collider> penetratingColliders = new List<Collider>();
+            foreach (Collider otherCollider in potentialColliders) {
+                // Colliders for analyse arms are not considered as colliding
+                if( otherCollider.name == "rangeTrigger" && otherCollider.gameObject.layer == 15) {     // Local Scenery
+                    LogDebug($"Skipping rangeTrigger collider...");
+                    continue;
+                }
+                if (Physics.ComputePenetration(
+                    collider, 
+                    collider.transform.position, 
+                    collider.transform.rotation,
+                    otherCollider, 
+                    otherCollider.transform.position, 
+                    otherCollider.transform.rotation,
+                    out Vector3 direction, 
+                    out float distance
+                )) {
+                    penetratingColliders.Add(otherCollider);
+                }
+            }
+            return penetratingColliders.ToArray();
+        }
+
+        private void LogPenetratingColliders(Collider collider, Collider[] colliders) {
+            if( colliders.Length == 0 ) return;
+            if( !DEBUG ) return;
+
+            LogDebug($"Collider {collider.name}/{collider.GetType().Name} colliding with {colliders.Length} colliders");
+            foreach (Collider coll in colliders) {
+                LogDebug($"- {coll.name} on layer {coll.gameObject.layer} ({LayerMask.LayerToName(coll.gameObject.layer)})");
+            }
+            LogDebug($"");
+            LogDebug($"Collider game hierarchy :");
+            {
+                Transform currentTransform = collider.transform.parent;
+                while (currentTransform != null) {
+                    LogDebug($"  Parent: {currentTransform.name} ({currentTransform.GetType().Name})");
+                    currentTransform = currentTransform.parent;
+                }
+            }
+            LogDebug($"");
+            LogDebug($"Colliding colliders hierarchy :");
+            foreach (Collider coll in colliders) {
+                LogDebug($"- Collider {coll.name}/{coll.GetType().Name} hierarchy :");
+                Transform currentTransform = coll.transform.parent;
+                while (currentTransform != null) {
+                    LogDebug($"  Parent: {currentTransform.name} ({currentTransform.GetType().Name})");
+                    currentTransform = currentTransform.parent;
+                }
+            }
+        }
+        
         bool IsCollidingWithGround(Collider collider) {
             Collider[] colliders;
             if (collider is BoxCollider boxCollider) {
@@ -173,9 +230,7 @@ namespace com.github.lhervier.ksp {
                 LogError($"Unsupported collider type : {collider.GetType().Name} (position: {collider.transform.position})");
                 colliders = new Collider[0];
             }
-            foreach (Collider coll in colliders) {
-                LogDebug($"=> Collision with : {coll.name} on layer {coll.gameObject.layer} ({LayerMask.LayerToName(coll.gameObject.layer)})");
-            }
+            LogPenetratingColliders(collider, colliders);
             return colliders.Length > 0;
         }
 
@@ -186,12 +241,13 @@ namespace com.github.lhervier.ksp {
             Vector3 scaledSize = Vector3.Scale(boxCollider.size, scale);
             Quaternion rotation = boxCollider.transform.rotation;
 
-            return Physics.OverlapBox(
+            Collider[] potentialColliders = Physics.OverlapBox(
                 center,
                 scaledSize * 0.5f,
                 rotation,
                 LAYER_MASK
             );
+            return GetPenetratingColliders(boxCollider, potentialColliders);
         }
 
         Collider[] GetCapsuleColliders(CapsuleCollider capsuleCollider) {
@@ -245,12 +301,13 @@ namespace com.github.lhervier.ksp {
             Vector3 point2 = center + directionVector * (height * 0.5f);
             
             // Returning the colliders that intersect the capsule.
-            return Physics.OverlapCapsule(
+            Collider[] potentialColliders = Physics.OverlapCapsule(
                 point1,
                 point2,
                 scaledRadius,
                 LAYER_MASK
             );
+            return GetPenetratingColliders(capsuleCollider, potentialColliders);
         }
 
         Collider[] GetSphereColliders(SphereCollider sphereCollider) {
@@ -259,11 +316,12 @@ namespace com.github.lhervier.ksp {
             float maxScale = Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z));
             float scaledRadius = sphereCollider.radius * maxScale;
             
-            return Physics.OverlapSphere(
+            Collider[] potentialColliders = Physics.OverlapSphere(
                 sphereCollider.transform.position - Vector3.up * GROUND_OFFSET,  // Adding 0.01 unit up to avoid collision with the ground
                 scaledRadius,
                 LAYER_MASK
             );
+            return GetPenetratingColliders(sphereCollider, potentialColliders);
         }
 
         Collider[] GetMeshColliders(MeshCollider meshCollider) {
@@ -281,24 +339,7 @@ namespace com.github.lhervier.ksp {
                 LAYER_MASK
             );
 
-            // Filtering the colliders that have a real penetration
-            List<Collider> penetratingColliders = new List<Collider>();
-            foreach (Collider otherCollider in potentialColliders) {
-                if (Physics.ComputePenetration(
-                    meshCollider, 
-                    meshCollider.transform.position, 
-                    meshCollider.transform.rotation,
-                    otherCollider, 
-                    otherCollider.transform.position, 
-                    otherCollider.transform.rotation,
-                    out Vector3 direction, 
-                    out float distance
-                )) {
-                    penetratingColliders.Add(otherCollider);
-                }
-            }
-
-            return penetratingColliders.ToArray();
+            return GetPenetratingColliders(meshCollider, potentialColliders);
         }
 
         private void OnEditorPartEvent(ConstructionEventType eventType, Part part) {
