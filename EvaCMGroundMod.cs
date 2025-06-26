@@ -56,7 +56,8 @@ namespace com.github.lhervier.ksp {
             (1 << 14) |     // Screens
             (1 << 25) |     // UIAdditional
             (1 << 10) |     // Scaled Scenery
-            (1 << 21)       // Part Triggers
+            (1 << 21) |     // Part Triggers
+            (1 << 26)       // WheelCollidersIgnore
         );
 
         private Part previousPart;
