@@ -4,44 +4,71 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-if [ -z "${KSPDIR:-}" ]; then
-    echo "ERROR: KSPDIR is not set (path to your Kerbal Space Program install)"
+die() {
+    echo "ERREUR: $*" >&2
     exit 1
-fi
+}
 
-if [ ! -d "$KSPDIR/KSP_x64_Data/Managed" ]; then
-    echo "ERROR: KSP managed assemblies not found at: $KSPDIR/KSP_x64_Data/Managed"
-    exit 1
-fi
+require_command() {
+    command -v "$1" >/dev/null 2>&1 || die "commande introuvable : $1"
+}
+
+detect_ksp_data_dir() {
+    if [[ -z "${KSPDIR:-}" ]]; then
+        die "la variable d'environnement KSPDIR n'est pas définie (répertoire d'installation de KSP)"
+    fi
+
+    if [[ -f "$KSPDIR/KSP_x64_Data/Managed/Assembly-CSharp.dll" ]]; then
+        echo "Structure Windows détectée (KSP_x64_Data)"
+        KSP_DATA_DIR="$KSPDIR/KSP_x64_Data"
+    elif [[ -f "$KSPDIR/KSP_Data/Managed/Assembly-CSharp.dll" ]]; then
+        echo "Structure Linux détectée (KSP_Data)"
+        KSP_DATA_DIR="$KSPDIR/KSP_Data"
+    else
+        die "Assembly-CSharp.dll introuvable dans $KSPDIR/KSP_x64_Data/Managed/ ou $KSPDIR/KSP_Data/Managed/"
+    fi
+
+    echo "Utilisation de KSPDIR: $KSPDIR"
+    echo "Utilisation de KSP_DATA_DIR: $KSP_DATA_DIR"
+}
 
 echo "==============================="
 echo "Building EvaCMGroundMod"
 echo "==============================="
 
-echo "Removing Release folder"
+require_command dotnet
+require_command zip
+detect_ksp_data_dir
+
+MSBUILD_PROPS=(-p:KSPDIR="$KSPDIR" -p:KSP_DATA_DIR="$KSP_DATA_DIR")
+
+echo "Suppression du dossier Release"
 rm -rf Release
 
-echo "Creating Release folder"
+echo "Création du dossier Release"
 mkdir -p Release/EvaCMGroundMod
 
-echo "Building Mod DLL"
-dotnet build
-if [ ! -f "Output/bin/EvaCMGroundMod.dll" ]; then
-    echo "ERROR: EvaCMGroundMod.dll was not produced"
-    exit 1
-fi
+echo "Restauration des packages NuGet"
+dotnet restore EvaCMGroundMod.csproj "${MSBUILD_PROPS[@]}"
 
-echo "Copying Mod dll files"
-cp -f "Output/bin/EvaCMGroundMod.dll" "Release/EvaCMGroundMod/"
+echo "Compilation de la DLL du mod (.NET Framework 4.7.2)"
+dotnet build EvaCMGroundMod.csproj "${MSBUILD_PROPS[@]}" --no-restore
 
-echo "Copying Config file"
-cp -f "eva_cm_ground.cfg" "Release/EvaCMGroundMod/"
+echo "Copie de la DLL du mod"
+cp -v Output/bin/EvaCMGroundMod.dll Release/EvaCMGroundMod/
 
-echo "Zipping Mod"
-rm -f "Release/EvaCMGroundMod.zip"
-(cd Release/EvaCMGroundMod && zip -r ../EvaCMGroundMod.zip .)
+echo "Copie du fichier de configuration"
+cp -v GameData/EvaCMGroundMod/eva_cm_ground.cfg Release/EvaCMGroundMod/
 
-echo "Removing Mod folder"
+echo "Création de l'archive"
+(
+    cd Release/EvaCMGroundMod
+    zip -qr ../EvaCMGroundMod.zip .
+)
+
+echo "Suppression du dossier intermédiaire"
 rm -rf Release/EvaCMGroundMod
 
-echo "Build Complete"
+echo
+echo "Build terminé : Release/EvaCMGroundMod.zip"
+echo "Exécuté le : $(date)"

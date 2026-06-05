@@ -4,27 +4,44 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-if [ -z "${KSPDIR:-}" ]; then
-    echo "ERROR: KSPDIR is not set (path to your Kerbal Space Program install)"
+die() {
+    echo "ERREUR: $*" >&2
     exit 1
-fi
+}
 
-if [ ! -f "Release/EvaCMGroundMod.zip" ]; then
-    echo "ERROR: Release/EvaCMGroundMod.zip not found — run ./build.sh first"
-    exit 1
-fi
+require_command() {
+    command -v "$1" >/dev/null 2>&1 || die "commande introuvable : $1"
+}
+
+check_kspdir() {
+    if [[ -z "${KSPDIR:-}" ]]; then
+        die "la variable d'environnement KSPDIR n'est pas définie (répertoire d'installation de KSP)"
+    fi
+    if [[ ! -d "$KSPDIR/GameData" ]]; then
+        die "KSPDIR ne pointe pas vers une installation KSP valide : $KSPDIR"
+    fi
+}
+
+require_command unzip
+check_kspdir
+
+ZIP_FILE="Release/EvaCMGroundMod.zip"
+[[ -f "$ZIP_FILE" ]] || die "archive introuvable : $ZIP_FILE (lancez ./build.sh d'abord)"
+
+MOD_DIR="$KSPDIR/GameData/EvaCMGroundMod"
 
 echo "====================================="
-echo "Removing existing Mod folder"
+echo "Suppression de l'installation existante"
 echo "====================================="
-rm -rf "$KSPDIR/GameData/EvaCMGround"
+rm -rf "$MOD_DIR"
 
 echo
 echo "====================================="
-echo "Unzipping Mod"
+echo "Extraction du mod"
 echo "====================================="
-mkdir -p "$KSPDIR/GameData/EvaCMGround"
-unzip -o "Release/EvaCMGroundMod.zip" -d "$KSPDIR/GameData/EvaCMGround"
+mkdir -p "$MOD_DIR"
+unzip -oq "$ZIP_FILE" -d "$MOD_DIR"
 
 echo
-echo "Mod installed"
+echo "Mod installé dans : $MOD_DIR"
+echo "Exécuté le : $(date)"
