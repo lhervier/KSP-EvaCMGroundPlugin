@@ -64,9 +64,6 @@ namespace com.github.lhervier.ksp {
         private Vector3 previousPosition;
         private Quaternion previousRotation;
 
-        // TEST PROBE (risk #3) — track EVA construction mode; press INSERT to run the save/readback probe.
-        private bool inEvaConstruction = false;
-        
         private static void LogInternal(string level, string message) {
             Debug.Log($"[EvaCMGroundMod][{level}] {message}");
         }
@@ -138,7 +135,6 @@ namespace com.github.lhervier.ksp {
 
         public void OnEVAConstructionMode(bool mode) {
             LogDebug($"OnEVAConstructionMode: {mode}");
-            this.inEvaConstruction = mode;     // TEST PROBE (risk #3)
             if( mode ) {
                 LogDebug("Starting Fix");
                 GameEvents.onEditorPartEvent.Add(OnEditorPartEvent);
@@ -148,72 +144,6 @@ namespace com.github.lhervier.ksp {
                 GameEvents.onEditorPartEvent.Remove(OnEditorPartEvent);
             }
         }
-
-        // ==============================================================================================
-        // TEST PROBE (risk #3) — press INSERT to: log the active vessel + live part positions of all
-        // loaded vessels, SaveGame to "reroot_test", then read that .sfs back and log the saved
-        // VESSEL/PART structure. Tells us (a) what the active vessel is in EVA construction,
-        // (b) whether SaveGame from construction mode captures the current part arrangement.
-        // REMOVE once validated.
-        public void Update() {
-            if( !Input.GetKeyDown(KeyCode.Insert) ) {
-                return;
-            }
-            RunSaveProbe();
-        }
-
-        private void RunSaveProbe() {
-            try {
-                LogInfo("===== SAVE PROBE (risk #3) BEGIN =====");
-                LogInfo($"Scene={HighLogic.LoadedScene} inEvaConstruction={this.inEvaConstruction}");
-
-                Vessel active = FlightGlobals.ActiveVessel;
-                LogInfo($"ActiveVessel='{active?.vesselName}' type={active?.vesselType} id={active?.id} parts={active?.parts?.Count}");
-
-                // Live state of every loaded vessel (reveals which one is the construction vessel)
-                foreach (Vessel v in FlightGlobals.VesselsLoaded) {
-                    LogInfo($"  Vessel '{v.vesselName}' type={v.vesselType} id={v.id} parts={v.parts.Count} isActive={(v == active)}");
-                    if (v.parts.Count > 1) {
-                        foreach (Part p in v.parts) {
-                            LogInfo($"    LIVE part='{p.partInfo.name}' craftID={p.craftID} flightID={p.flightID} orgPos={p.orgPos} worldPos={p.transform.position}");
-                        }
-                    }
-                }
-
-                // Save the current game state to a dedicated test file
-                LogInfo("Calling GamePersistence.SaveGame('reroot_test')...");
-                Game g = HighLogic.CurrentGame.Updated();
-                GamePersistence.SaveGame(g, "reroot_test", HighLogic.SaveFolder, SaveMode.OVERWRITE);
-                LogInfo("SaveGame returned without exception.");
-
-                // Read the saved .sfs back and log its VESSEL/PART structure
-                string path = Path.Combine(
-                    Path.Combine(Path.Combine(KSPUtil.ApplicationRootPath, "saves"), HighLogic.SaveFolder),
-                    "reroot_test.sfs");
-                LogInfo($"Reading back: {path} (exists={File.Exists(path)})");
-
-                ConfigNode root = ConfigNode.Load(path);
-                ConfigNode flightState = root?.GetNode("GAME")?.GetNode("FLIGHTSTATE");
-                if (flightState == null) {
-                    LogInfo("No GAME/FLIGHTSTATE node found in saved file.");
-                } else {
-                    foreach (ConfigNode vnode in flightState.GetNodes("VESSEL")) {
-                        ConfigNode[] partNodes = vnode.GetNodes("PART");
-                        LogInfo($"  SAVED vessel '{vnode.GetValue("name")}' rootIdx={vnode.GetValue("root")} parts={partNodes.Length}");
-                        if (partNodes.Length > 1) {
-                            foreach (ConfigNode pnode in partNodes) {
-                                LogInfo($"    SAVED part='{pnode.GetValue("name")}' uid={pnode.GetValue("uid")} parent={pnode.GetValue("parent")} position={pnode.GetValue("position")}");
-                            }
-                        }
-                    }
-                }
-                LogInfo("===== SAVE PROBE END =====");
-            } catch (Exception ex) {
-                LogError($"SAVE PROBE failed: {ex.Message}\n{ex.StackTrace}");
-            }
-        }
-
-        // ==============================================================================================
 
         Vector3 GetScale(Collider collider) {
             Vector3 colliderScale = collider.transform.lossyScale;
