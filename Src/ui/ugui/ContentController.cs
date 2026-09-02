@@ -39,7 +39,7 @@ namespace com.github.lhervier.ksp.evacmgroundmod.ui.ugui
 
         public void Start()
         {
-            // The options only exist once: OnEnable then only selects among them.
+            // The options only exist once: the syncs then only select among them.
             if (_logLevelCombo != null)
             {
                 _logLevelCombo.SetOptions(LogLevels.Names, _viewModel.LogLevel.ToString());
@@ -56,6 +56,11 @@ namespace com.github.lhervier.ksp.evacmgroundmod.ui.ugui
                 _viewModel.OnLogLevelChanged.Add(OnLogLevelChanged);
                 _viewModel.OnGroundOffsetChanged.Add(OnGroundOffsetChanged);
             }
+
+            // First sync of the freshly built window: OnEnable already ran (Unity fires it from
+            // AddComponent, before the view model could be injected) and will not run again until the
+            // window is hidden and shown back, so nothing else would fill the controls this time round.
+            SyncFromViewModel();
         }
 
         public void OnDestroy()
@@ -75,8 +80,15 @@ namespace com.github.lhervier.ksp.evacmgroundmod.ui.ugui
             }
         }
 
-        // Guarded: OnEnable can fire during AddComponent, before the view model is injected.
+        // Guarded: OnEnable can fire during AddComponent, before the view model is injected. Start()
+        // then does the first sync; this one only covers the hide/show cycles that follow.
         public void OnEnable()
+        {
+            SyncFromViewModel();
+        }
+
+        /// <summary>Brings every control back in line with the settings.</summary>
+        private void SyncFromViewModel()
         {
             if (_viewModel == null) return;
             if (_logLevelCombo != null)
