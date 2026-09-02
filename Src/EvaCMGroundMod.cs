@@ -69,6 +69,11 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
             (1 << 26)       // WheelCollidersIgnore
         );
 
+        /// <summary>
+        /// Largest number of intermediate poses a single move is cut into.
+        /// </summary>
+        private const int MAX_SWEEP_STEPS = 32;
+
         private Part previousPart;
         private Vector3 previousPosition;
         private Quaternion previousRotation;
@@ -211,21 +216,33 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
         Collider[] GetBoxColliders(BoxCollider boxCollider) {
             Vector3 scale = GetScale(boxCollider);
             
-            Vector3 center = boxCollider.transform.position + GetGroundOffsetVector(boxCollider.transform.position);
+            // The broad phase is centered on the collider's own volume (transform + local center) and the
+            // penetration test on the transform, so the drop is applied to both rather than to a single
+            // shared center.
+            Vector3 offset = GetGroundOffsetVector(boxCollider.transform.position);
+            Vector3 volumeWorldCenter = boxCollider.transform.TransformPoint(boxCollider.center) + offset;
+            Vector3 transformWorldPosition = boxCollider.transform.position + offset;
+
             Vector3 scaledSize = Vector3.Scale(boxCollider.size, scale);
             Quaternion rotation = boxCollider.transform.rotation;
 
             Collider[] potentialColliders = Physics.OverlapBox(
-                center,
+                volumeWorldCenter,
                 scaledSize * 0.5f,
                 rotation,
                 LAYER_MASK
             );
-            return GetPenetratingColliders(boxCollider, center, potentialColliders);
+            return GetPenetratingColliders(boxCollider, transformWorldPosition, potentialColliders);
         }
 
         Collider[] GetCapsuleColliders(CapsuleCollider capsuleCollider) {
-            Vector3 center = capsuleCollider.transform.position + GetGroundOffsetVector(capsuleCollider.transform.position);
+            // The broad phase is centered on the collider's own volume (transform + local center) and the
+            // penetration test on the transform, so the drop is applied to both rather than to a single
+            // shared center.
+            Vector3 offset = GetGroundOffsetVector(capsuleCollider.transform.position);
+            Vector3 volumeWorldCenter = capsuleCollider.transform.TransformPoint(capsuleCollider.center) + offset;
+            Vector3 transformWorldPosition = capsuleCollider.transform.position + offset;
+
             Vector3 scale = GetScale(capsuleCollider);
             
             // Calculate radius using the maximum scale of the two perpendicular axes
@@ -271,8 +288,8 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
             }
             
             // Calculating the two points that define the capsule.
-            Vector3 point1 = center - directionVector * (height * 0.5f);
-            Vector3 point2 = center + directionVector * (height * 0.5f);
+            Vector3 point1 = volumeWorldCenter - directionVector * (height * 0.5f);
+            Vector3 point2 = volumeWorldCenter + directionVector * (height * 0.5f);
             
             // Returning the colliders that intersect the capsule.
             Collider[] potentialColliders = Physics.OverlapCapsule(
@@ -281,7 +298,7 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
                 scaledRadius,
                 LAYER_MASK
             );
-            return GetPenetratingColliders(capsuleCollider, center, potentialColliders);
+            return GetPenetratingColliders(capsuleCollider, transformWorldPosition, potentialColliders);
         }
 
         Collider[] GetSphereColliders(SphereCollider sphereCollider) {
@@ -290,14 +307,19 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
             float maxScale = Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z));
             float scaledRadius = sphereCollider.radius * maxScale;
 
-            Vector3 center = sphereCollider.transform.position + GetGroundOffsetVector(sphereCollider.transform.position);
+            // The broad phase is centered on the collider's own volume (transform + local center) and the
+            // penetration test on the transform, so the drop is applied to both rather than to a single
+            // shared center.
+            Vector3 offset = GetGroundOffsetVector(sphereCollider.transform.position);
+            Vector3 volumeWorldCenter = sphereCollider.transform.TransformPoint(sphereCollider.center) + offset;
+            Vector3 transformWorldPosition = sphereCollider.transform.position + offset;
 
             Collider[] potentialColliders = Physics.OverlapSphere(
-                center,
+                volumeWorldCenter,
                 scaledRadius,
                 LAYER_MASK
             );
-            return GetPenetratingColliders(sphereCollider, center, potentialColliders);
+            return GetPenetratingColliders(sphereCollider, transformWorldPosition, potentialColliders);
         }
 
         Collider[] GetMeshColliders(MeshCollider meshCollider) {
@@ -322,6 +344,105 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
             return GetPenetratingColliders(meshCollider, meshCollider.transform.position + offset, potentialColliders);
         }
 
+        /// <summary>
+        /// The smallest distance across <paramref name="collider"/>, in world units.
+        /// </summary>
+        private float GetSmallestThickness(Collider collider) {
+            Vector3 scale = GetScale(collider);
+
+            if (collider is BoxCollider boxCollider) {
+                Vector3 scaledSize = Vector3.Scale(boxCollider.size, scale);
+                return Mathf.Min(scaledSize.x, Mathf.Min(scaledSize.y, scaledSize.z));
+            }
+            if (collider is SphereCollider sphereCollider) {
+                return 2f * sphereCollider.radius * Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z));
+            }
+            if (collider is CapsuleCollider capsuleCollider) {
+                float radiusScale;
+                switch (capsuleCollider.direction) {
+                    case 0:     // X-axis
+                        radiusScale = Mathf.Max(scale.y, scale.z);
+                        break;
+                    case 1:     // Y-axis
+                        radiusScale = Mathf.Max(scale.x, scale.z);
+                        break;
+                    default:    // Z-axis
+                        radiusScale = Mathf.Max(scale.x, scale.y);
+                        break;
+                }
+                // Across the capsule, never along it: it is nowhere thinner than its diameter.
+                return 2f * capsuleCollider.radius * radiusScale;
+            }
+
+            Vector3 boundsSize = collider.bounds.size;
+            return Mathf.Min(boundsSize.x, Mathf.Min(boundsSize.y, boundsSize.z));
+        }
+
+        /// <summary>
+        /// How many intermediate poses the move of <paramref name="part"/> from
+        /// <paramref name="fromPosition"/>/<paramref name="fromRotation"/> to the pose it currently holds
+        /// has to be cut into, so that the test walks over everything standing in the way.
+        /// </summary>
+        private int GetSweepStepCount(
+            Part part,
+            Collider[] colliders,
+            Vector3 fromPosition,
+            Quaternion fromRotation
+        ) {
+            // The thinnest collider sets the step: what has to be ruled out is a move long enough to take
+            // a collider from one side of a surface to the other without ever overlapping it.
+            float thinnest = float.MaxValue;
+            // How far from the part origin the colliders reach, to turn the rotation into a length.
+            float radius = 0f;
+            foreach (Collider collider in colliders) {
+                thinnest = Mathf.Min(thinnest, GetSmallestThickness(collider));
+
+                Bounds bounds = collider.bounds;
+                radius = Mathf.Max(
+                    radius,
+                    Vector3.Distance(bounds.center, part.transform.position) + bounds.extents.magnitude
+                );
+            }
+            if (thinnest <= 0f) {
+                // A collider with no thickness cannot be walked over safely at any resolution.
+                return MAX_SWEEP_STEPS;
+            }
+
+            // Rotation is part of the move: a collider away from the part origin travels an arc, and that
+            // arc steps over a surface just like a translation does.
+            float travelled =
+                Vector3.Distance(fromPosition, part.transform.position)
+                + Quaternion.Angle(fromRotation, part.transform.rotation) * Mathf.Deg2Rad * radius;
+
+            // Half the thinnest collider, so that at least one pose lands inside whatever is crossed.
+            int steps = Mathf.CeilToInt(travelled / (thinnest * 0.5f));
+            return Mathf.Clamp(steps, 1, MAX_SWEEP_STEPS);
+        }
+
+        /// <summary>
+        /// Whether <paramref name="part"/> is in the ground in the pose it currently holds.
+        /// </summary>
+        private bool IsPoseInGround(Part part, Collider[] colliders) {
+            // Checking altitude of the part center to see if it's below the ground
+            double partCenterLatitude = FlightGlobals.currentMainBody.GetLatitude(part.transform.position);
+            double partCenterLongitude = FlightGlobals.currentMainBody.GetLongitude(part.transform.position);
+            double partCenterAltitude = FlightGlobals.currentMainBody.GetAltitude(part.transform.position);
+
+            double terrainAltitude = FlightGlobals.currentMainBody.TerrainAltitude(partCenterLatitude, partCenterLongitude, true);
+            double heightAboveTerrain = partCenterAltitude - terrainAltitude;
+
+            if (heightAboveTerrain < 0) {
+                return true;
+            }
+
+            foreach (Collider collider in colliders) {
+                if (IsCollidingWithGround(collider)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private void OnEditorPartEvent(ConstructionEventType eventType, Part part) {
             if( 
                 part == this.previousPart && 
@@ -343,25 +464,29 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
                 this.previousRotation = part.transform.rotation;
             }
 
-            // Checking altitude of the part center to see if it's below the ground
-            double partCenterLatitude = FlightGlobals.currentMainBody.GetLatitude(part.transform.position);
-            double partCenterLongitude = FlightGlobals.currentMainBody.GetLongitude(part.transform.position);
-            double partCenterAltitude = FlightGlobals.currentMainBody.GetAltitude(part.transform.position);
+            Collider[] colliders = part.GetComponentsInChildren<Collider>();
+            Vector3 targetPosition = part.transform.position;
+            Quaternion targetRotation = part.transform.rotation;
 
-            double terrainAltitude = FlightGlobals.currentMainBody.TerrainAltitude(partCenterLatitude, partCenterLongitude, true);
-            double heightAboveTerrain = partCenterAltitude - terrainAltitude;
-            
+            // The whole move is walked pose by pose, not just tested where it ends. The editor never moves
+            // its gizmo back when this fix puts the part back, so the two drift apart for as long as the
+            // player keeps dragging, and a single event ends up carrying the part a long way. Terrain and
+            // buildings are non convex MeshColliders, that is to say surfaces with no thickness at all: a
+            // collider landing entirely below one penetrates nothing, and would be let through.
             bool inGround = false;
-            if (heightAboveTerrain < 0) {
-                inGround = true;
-            }
-            else {
-                Collider[] colliders = part.GetComponentsInChildren<Collider>();
-                foreach (Collider collider in colliders) {
-                    if (IsCollidingWithGround(collider)) {
-                        inGround = true;
-                        break;
-                    }
+            int steps = GetSweepStepCount(part, colliders, this.previousPosition, this.previousRotation);
+            for (int step = 1; step <= steps; step++) {
+                float ratio = (float)step / steps;
+                part.transform.position = Vector3.Lerp(this.previousPosition, targetPosition, ratio);
+                part.transform.rotation = Quaternion.Slerp(this.previousRotation, targetRotation, ratio);
+
+                // The broad phase reads the physics scene, which does not necessarily follow a transform
+                // written from a script.
+                Physics.SyncTransforms();
+
+                if (IsPoseInGround(part, colliders)) {
+                    inGround = true;
+                    break;
                 }
             }
 
@@ -369,9 +494,15 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
                 part.transform.position = this.previousPosition;
                 part.transform.rotation = this.previousRotation;
             } else {
-                this.previousPosition = part.transform.position;
-                this.previousRotation = part.transform.rotation;
+                this.previousPosition = targetPosition;
+                this.previousRotation = targetRotation;
+                part.transform.position = targetPosition;
+                part.transform.rotation = targetRotation;
             }
+
+            // Leaving the physics scene on one of the poses walked through above would describe the part
+            // somewhere it is not.
+            Physics.SyncTransforms();
         }
     }
 }
