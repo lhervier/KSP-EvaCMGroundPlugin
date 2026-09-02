@@ -28,6 +28,19 @@ The mod works by:
 - Maintaining a history of valid part positions
 - Restoring parts to their last valid position when an invalid placement is detected
 
+## Settings
+
+The mod adds a button to the application launcher (in flight and at the space center) that opens a
+small settings window:
+
+- **Log level** - how much the mod writes to `KSP.log`.
+- **Ground offset** - how close to the ground a part may come before the placement is refused
+  (0.010 m by default). Raise it if parts still end up buried, lower it if they refuse to sit on the
+  surface.
+
+Both are settings of the *installation*, not of a save: they are stored in
+`GameData/EvaCMGroundMod/PluginData/settings.cfg` and applied as soon as they are changed.
+
 ## Installation
 
 1. Download the latest release

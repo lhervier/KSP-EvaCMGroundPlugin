@@ -1,17 +1,26 @@
-using System;
 using System.Collections.Generic;
-using System.IO;
-using Expansions.Missions.Editor;
 using UnityEngine;
+using com.github.lhervier.ksp.shared;
+using com.github.lhervier.ksp.evacmgroundmod.settings;
 
-namespace com.github.lhervier.ksp {
-	
-	[KSPAddon(KSPAddon.Startup.PSystemSpawn, false)]
+namespace com.github.lhervier.ksp.evacmgroundmod {
+
+    /// <summary>
+    /// The fix itself: while EVA construction mode is on, a part that would end up in the ground is put
+    /// back where it last was.
+    /// </summary>
+    [KSPAddon(KSPAddon.Startup.PSystemSpawn, false)]
     public class EvaCMGroundMod : MonoBehaviour {
-        
-        private static bool DEBUG = false;
-        private static float GROUND_OFFSET = 0.01f;
-        private static readonly string CONFIG_FILE = "eva_cm_ground.cfg";
+
+        private static readonly ModLogger LOGGER = new ModLogger("GroundFix");
+
+        /// <summary>
+        /// How far down the collision test volume is dropped before looking for the ground, in meters.
+        ///
+        /// Static, and read on every test rather than captured once: the settings window writes it live
+        /// (through the view model), while this addon is rebuilt at every scene change.
+        /// </summary>
+        public static float GroundOffset { get; set; } = EvaCMGroundSettings.GroundOffsetDefault;
 
         /// <summary>
         /// Layer mask for the colliders that we want to check.
@@ -64,83 +73,31 @@ namespace com.github.lhervier.ksp {
         private Vector3 previousPosition;
         private Quaternion previousRotation;
 
-        private static void LogInternal(string level, string message) {
-            Debug.Log($"[EvaCMGroundMod][{level}] {message}");
-        }
-
-        private static void LogInfo(string message) {
-            LogInternal("INFO", message);
-        }
-
-        private static void LogDebug(string message) {
-            if( !DEBUG ) {
-                return;
-            }
-            LogInternal("DEBUG", message);
-        }
-
-        private static void LogError(string message) {
-            LogInternal("ERROR", message);
-        }
-
-        private static void InitDebugMode() {
-            try {
-                // Get the directory where the mod DLL is located
-                string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-                string modDirectory = Path.GetDirectoryName(dllPath);
-                string configPath = Path.Combine(modDirectory, CONFIG_FILE);
-
-                if (File.Exists(configPath)) {
-                    string[] lines = File.ReadAllLines(configPath);
-                    foreach (string line in lines) {
-                        string trimmedLine = line.Trim();
-                        if( trimmedLine.StartsWith("#") ) {
-                            continue;
-                        }
-                        if (trimmedLine.StartsWith("debug=")) {
-                            string value = trimmedLine.Substring(6).Trim().ToLower();
-                            DEBUG = (value == "true" || value == "1" || value == "yes");
-                            break;
-                        }
-                        if (trimmedLine.StartsWith("ground_offset=")) {
-                            string value = trimmedLine.Substring(14).Trim();
-                            GROUND_OFFSET = float.Parse(value);
-                            break;
-                        }
-                    }
-                }
-            }
-            catch (Exception ex) {
-                Debug.LogError($"[EvaCMGroundMod] Error reading config file: {ex.Message}");
-            }
-        }
-
-        protected void Awake() 
+        protected void Awake()
         {
-            InitDebugMode();
-            LogInfo("Awaked");
+            LOGGER.LogInfo("Awaked");
             DontDestroyOnLoad(this);
         }
 
         public void Start() {
             GameEvents.OnEVAConstructionMode.Add(OnEVAConstructionMode);
-            LogInfo("Plugin started");
+            LOGGER.LogInfo("Plugin started");
         }
 
         public void OnDestroy() {
             GameEvents.onEditorPartEvent.Remove(OnEditorPartEvent);
             GameEvents.OnEVAConstructionMode.Remove(OnEVAConstructionMode);
-            LogInfo("Plugin stopped");
+            LOGGER.LogInfo("Plugin stopped");
         }
 
         public void OnEVAConstructionMode(bool mode) {
-            LogDebug($"OnEVAConstructionMode: {mode}");
+            LOGGER.LogDebug($"OnEVAConstructionMode: {mode}");
             if( mode ) {
-                LogDebug("Starting Fix");
+                LOGGER.LogDebug("Starting Fix");
                 GameEvents.onEditorPartEvent.Add(OnEditorPartEvent);
             }
             else {
-                LogDebug("Stopping Fix");
+                LOGGER.LogDebug("Stopping Fix");
                 GameEvents.onEditorPartEvent.Remove(OnEditorPartEvent);
             }
         }
@@ -163,7 +120,7 @@ namespace com.github.lhervier.ksp {
             foreach (Collider otherCollider in potentialColliders) {
                 // Colliders for analyse arms are not considered as colliding
                 if( otherCollider.name == "rangeTrigger" && otherCollider.gameObject.layer == 15) {     // Local Scenery
-                    LogDebug($"Skipping rangeTrigger collider...");
+                    LOGGER.LogDebug($"Skipping rangeTrigger collider...");
                     continue;
                 }
                 if (Physics.ComputePenetration(
@@ -184,28 +141,27 @@ namespace com.github.lhervier.ksp {
 
         private void LogPenetratingColliders(Collider collider, Collider[] colliders) {
             if( colliders.Length == 0 ) return;
-            if( !DEBUG ) return;
 
-            LogDebug($"Collider {collider.name}/{collider.GetType().Name} colliding with {colliders.Length} colliders");
+            LOGGER.LogDebug($"Collider {collider.name}/{collider.GetType().Name} colliding with {colliders.Length} colliders");
             foreach (Collider coll in colliders) {
-                LogDebug($"- {coll.name} on layer {coll.gameObject.layer} ({LayerMask.LayerToName(coll.gameObject.layer)})");
+                LOGGER.LogDebug($"- {coll.name} on layer {coll.gameObject.layer} ({LayerMask.LayerToName(coll.gameObject.layer)})");
             }
-            LogDebug($"");
-            LogDebug($"Collider game hierarchy :");
+            LOGGER.LogDebug($"");
+            LOGGER.LogDebug($"Collider game hierarchy :");
             {
                 Transform currentTransform = collider.transform.parent;
                 while (currentTransform != null) {
-                    LogDebug($"  Parent: {currentTransform.name} ({currentTransform.GetType().Name})");
+                    LOGGER.LogDebug($"  Parent: {currentTransform.name} ({currentTransform.GetType().Name})");
                     currentTransform = currentTransform.parent;
                 }
             }
-            LogDebug($"");
-            LogDebug($"Colliding colliders hierarchy :");
+            LOGGER.LogDebug($"");
+            LOGGER.LogDebug($"Colliding colliders hierarchy :");
             foreach (Collider coll in colliders) {
-                LogDebug($"- Collider {coll.name}/{coll.GetType().Name} hierarchy :");
+                LOGGER.LogDebug($"- Collider {coll.name}/{coll.GetType().Name} hierarchy :");
                 Transform currentTransform = coll.transform.parent;
                 while (currentTransform != null) {
-                    LogDebug($"  Parent: {currentTransform.name} ({currentTransform.GetType().Name})");
+                    LOGGER.LogDebug($"  Parent: {currentTransform.name} ({currentTransform.GetType().Name})");
                     currentTransform = currentTransform.parent;
                 }
             }
@@ -226,7 +182,7 @@ namespace com.github.lhervier.ksp {
                 colliders = GetMeshColliders(meshCollider);
             }
             else {
-                LogError($"Unsupported collider type : {collider.GetType().Name} (position: {collider.transform.position})");
+                LOGGER.LogError($"Unsupported collider type : {collider.GetType().Name} (position: {collider.transform.position})");
                 colliders = new Collider[0];
             }
             LogPenetratingColliders(collider, colliders);
@@ -236,7 +192,7 @@ namespace com.github.lhervier.ksp {
         Collider[] GetBoxColliders(BoxCollider boxCollider) {
             Vector3 scale = GetScale(boxCollider);
             
-            Vector3 center = boxCollider.transform.position - Vector3.up * GROUND_OFFSET;  // Adding 0.01 unit up to avoid collision with the ground
+            Vector3 center = boxCollider.transform.position - Vector3.up * GroundOffset;  // Test volume dropped by the ground offset: the part is refused as soon as it comes that close to the ground
             Vector3 scaledSize = Vector3.Scale(boxCollider.size, scale);
             Quaternion rotation = boxCollider.transform.rotation;
 
@@ -250,7 +206,7 @@ namespace com.github.lhervier.ksp {
         }
 
         Collider[] GetCapsuleColliders(CapsuleCollider capsuleCollider) {
-            Vector3 center = capsuleCollider.transform.position - Vector3.up * GROUND_OFFSET;  // Adding 0.01 unit up to avoid collision with the ground
+            Vector3 center = capsuleCollider.transform.position - Vector3.up * GroundOffset;  // Test volume dropped by the ground offset: the part is refused as soon as it comes that close to the ground
             Vector3 scale = GetScale(capsuleCollider);
             
             // Calculate radius using the maximum scale of the two perpendicular axes
@@ -316,7 +272,7 @@ namespace com.github.lhervier.ksp {
             float scaledRadius = sphereCollider.radius * maxScale;
             
             Collider[] potentialColliders = Physics.OverlapSphere(
-                sphereCollider.transform.position - Vector3.up * GROUND_OFFSET,  // Adding 0.01 unit up to avoid collision with the ground
+                sphereCollider.transform.position - Vector3.up * GroundOffset,  // Test volume dropped by the ground offset: the part is refused as soon as it comes that close to the ground
                 scaledRadius,
                 LAYER_MASK
             );
