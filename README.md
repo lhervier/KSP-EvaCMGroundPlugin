@@ -1,32 +1,85 @@
 # EVA Construction Mode Ground Fix
 
-A Kerbal Space Program mod that prevents parts from being placed underground during EVA Construction Mode.
+A Kerbal Space Program mod that prevents parts from being placed underground during EVA Construction
+Mode.
 
-## Problem Description
+## The problem
 
-There is a bug in KSP's EVA Construction Mode that can cause serious issues with ground-anchored structures:
+KSP's EVA Construction Mode lets a kerbal move a part anywhere — including *below* the surface.
+Nothing in the game refuses that placement, and nothing warns about it. The damage only shows up on
+the next reload, when the game tries to put the vessel back above the ground.
 
-1. An engineer deploys a ground anchor (like a Clamp-O-Tron)
-2. They enter EVA Construction Mode and attach various parts to it
-3. While in EVA Construction Mode, they can accidentally place parts underground
-4. When the game is reloaded, the game will attempt to fix this by raising the entire structure above the ground
-5. This results in the ground anchor floating above the surface, which is both unrealistic and can cause stability issues
+Here is the whole sequence, on Minmus.
 
-## Solution
+### 1. An engineer deploys a ground anchor
 
-This mod prevents parts from being placed underground during EVA Construction Mode by:
+A Clamp-O-Tron is dropped on the surface, and becomes the root of the future structure.
 
-- Monitoring part positions during EVA Construction Mode
-- Detecting when a part would intersect with the ground
-- Preventing the part from being placed in an invalid position
+![A Clamp-O-Tron deployed on the ground](docs/00-Clamp-O-Tron.png)
 
-## Technical Details
+### 2. Parts are attached to it in EVA Construction Mode
 
-The mod works by:
-- Using Unity's physics system to detect ground collisions
-- Supporting various collider types (Box, Capsule, Sphere, and Mesh colliders)
-- Maintaining a history of valid part positions
-- Restoring parts to their last valid position when an invalid placement is detected
+A first truss segment goes on the anchor…
+
+![First truss segment attached to the anchor](docs/10-First-Part.png)
+
+…then a second one…
+
+![Second truss segment attached](docs/20-Second-Part.png)
+
+…then a third one.
+
+![Third truss segment attached](docs/30-Third-Part.png)
+
+### 3. A part is grabbed again, rotated and moved
+
+The last segment is picked up and repositioned with the translation/rotation gizmo.
+
+![The segment is rotated and moved with the gizmo](docs/40-Rotate-And-Place.png)
+
+### 4. …and ends up in the ground
+
+Nothing stops the segment from sinking into the surface: it is dropped there, half buried, and the
+game accepts it as a perfectly valid placement.
+
+![The segment is moved into the ground](docs/50-Move-Into-The-Ground.png)
+
+### 5. Save, reload — and the structure is ruined
+
+What happens next depends on whether [KSPCommunityFixes](https://github.com/KSPCommunityFixes/KSPCommunityFixes)
+is installed, but neither outcome is the one you built.
+
+**With KSPCommunityFixes.** The buried segment is no longer in the ground, but the whole structure
+has been distorted to get it out: the trusses are twisted and splayed apart, and the assembly no
+longer has the shape it was given.
+
+![After reload, with KSPCommunityFixes: the structure is distorted](docs/60-Save-And-Reload-KSPCommunityFixes.png)
+
+**In stock.** The structure keeps its shape, but the game raises *everything* until no part is
+underground — the ground anchor included. The Clamp-O-Tron, which was bolted to the surface, now
+floats in mid-air, and the whole structure hangs several meters above Minmus.
+
+![After reload, in stock: the whole structure floats above the ground](docs/60-Save-And-Reload-Stock.png)
+
+## The fix
+
+This mod attacks the problem at the source: rather than repairing the vessel on reload, it makes the
+invalid placement impossible in the first place. Step 4 above simply cannot happen — the part refuses
+to go below the surface, so the reloaded structure is exactly the one that was built.
+
+While EVA Construction Mode is on, the mod watches every part being moved, and as soon as a part
+would touch the ground it is put back where it last was.
+
+## Technical details
+
+- Every collider of the moved part is tested against the scenery with Unity's physics system
+  (`OverlapBox` / `OverlapCapsule` / `OverlapSphere`, then `ComputePenetration` to discard the
+  overlaps that are not real penetrations).
+- Box, capsule, sphere and mesh colliders are all supported.
+- The test volume is dropped by the configured *ground offset*, so a part is refused slightly before
+  it actually reaches the surface.
+- The last valid position and rotation of the part are kept, and restored whenever an invalid
+  placement is detected.
 
 ## Settings
 
