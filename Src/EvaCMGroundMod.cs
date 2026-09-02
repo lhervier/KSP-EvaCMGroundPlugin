@@ -111,8 +111,24 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
             );
         }
 
+        /// <summary>
+        /// The vector a collider's test volume is dropped by, so that a part is declared to be in the
+        /// ground slightly before it actually touches it.
+        /// </summary>
+        private static Vector3 GetGroundOffsetVector(Vector3 worldPosition) {
+            // Down is toward the center of the body, not world -Y: the flight scene is never aligned on
+            // the surface, so Vector3.up points away from the ground at a single spot on the planet.
+            Vector3 up = FlightGlobals.getUpAxis(FlightGlobals.currentMainBody, worldPosition);
+            return -up * GroundOffset;
+        }
+
+        /// <summary>
+        /// Among the candidates the broad phase returned, those the collider really penetrates once
+        /// placed at <paramref name="position"/>.
+        /// </summary>
         private Collider[] GetPenetratingColliders(
             Collider collider,
+            Vector3 position,
             Collider[] potentialColliders
         ) {
             // Filtering the colliders that have a real penetration
@@ -124,8 +140,11 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
                     continue;
                 }
                 if (Physics.ComputePenetration(
-                    collider, 
-                    collider.transform.position, 
+                    collider,
+                    // The dropped position, not collider.transform.position: this test is the one that
+                    // decides, so the ground offset has to reach it. Applied to the broad phase alone, it
+                    // would change nothing at all.
+                    position,
                     collider.transform.rotation,
                     otherCollider, 
                     otherCollider.transform.position, 
@@ -192,7 +211,7 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
         Collider[] GetBoxColliders(BoxCollider boxCollider) {
             Vector3 scale = GetScale(boxCollider);
             
-            Vector3 center = boxCollider.transform.position - Vector3.up * GroundOffset;  // Test volume dropped by the ground offset: the part is refused as soon as it comes that close to the ground
+            Vector3 center = boxCollider.transform.position + GetGroundOffsetVector(boxCollider.transform.position);
             Vector3 scaledSize = Vector3.Scale(boxCollider.size, scale);
             Quaternion rotation = boxCollider.transform.rotation;
 
@@ -202,11 +221,11 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
                 rotation,
                 LAYER_MASK
             );
-            return GetPenetratingColliders(boxCollider, potentialColliders);
+            return GetPenetratingColliders(boxCollider, center, potentialColliders);
         }
 
         Collider[] GetCapsuleColliders(CapsuleCollider capsuleCollider) {
-            Vector3 center = capsuleCollider.transform.position - Vector3.up * GroundOffset;  // Test volume dropped by the ground offset: the part is refused as soon as it comes that close to the ground
+            Vector3 center = capsuleCollider.transform.position + GetGroundOffsetVector(capsuleCollider.transform.position);
             Vector3 scale = GetScale(capsuleCollider);
             
             // Calculate radius using the maximum scale of the two perpendicular axes
@@ -262,7 +281,7 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
                 scaledRadius,
                 LAYER_MASK
             );
-            return GetPenetratingColliders(capsuleCollider, potentialColliders);
+            return GetPenetratingColliders(capsuleCollider, center, potentialColliders);
         }
 
         Collider[] GetSphereColliders(SphereCollider sphereCollider) {
@@ -270,13 +289,15 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
             // For a sphere, we use the largest scale to maintain the spherical shape
             float maxScale = Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z));
             float scaledRadius = sphereCollider.radius * maxScale;
-            
+
+            Vector3 center = sphereCollider.transform.position + GetGroundOffsetVector(sphereCollider.transform.position);
+
             Collider[] potentialColliders = Physics.OverlapSphere(
-                sphereCollider.transform.position - Vector3.up * GroundOffset,  // Test volume dropped by the ground offset: the part is refused as soon as it comes that close to the ground
+                center,
                 scaledRadius,
                 LAYER_MASK
             );
-            return GetPenetratingColliders(sphereCollider, potentialColliders);
+            return GetPenetratingColliders(sphereCollider, center, potentialColliders);
         }
 
         Collider[] GetMeshColliders(MeshCollider meshCollider) {
@@ -287,14 +308,18 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
                 scale
             );
 
+            // The broad phase is centered on the bounds and the penetration test on the transform, so the
+            // drop is applied to both rather than to a single shared center.
+            Vector3 offset = GetGroundOffsetVector(meshCollider.transform.position);
+
             Collider[] potentialColliders = Physics.OverlapBox(
-                meshCollider.bounds.center,
+                meshCollider.bounds.center + offset,
                 scaledExtents,
                 meshCollider.transform.rotation,
                 LAYER_MASK
             );
 
-            return GetPenetratingColliders(meshCollider, potentialColliders);
+            return GetPenetratingColliders(meshCollider, meshCollider.transform.position + offset, potentialColliders);
         }
 
         private void OnEditorPartEvent(ConstructionEventType eventType, Part part) {
