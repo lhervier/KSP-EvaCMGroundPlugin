@@ -2,3 +2,6 @@
 Output
 Release
 obj
+
+# Localization .cfg are generated from the .properties sources at build time.
+GameData/*/Localization/*.cfg
