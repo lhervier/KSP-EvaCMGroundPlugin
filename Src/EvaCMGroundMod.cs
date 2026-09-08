@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using com.github.lhervier.ksp.shared;
 using com.github.lhervier.ksp.evacmgroundmod.settings;
@@ -659,7 +659,34 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
             return false;
         }
 
+        /// <summary>
+        /// Whether <paramref name="eventType"/> is one of the gizmo moves this fix truncates.
+        /// </summary>
+        private static bool IsGizmoMove(ConstructionEventType eventType) {
+            return eventType == ConstructionEventType.PartOffsetting
+                || eventType == ConstructionEventType.PartOffset
+                || eventType == ConstructionEventType.PartRotating
+                || eventType == ConstructionEventType.PartRotated;
+        }
+
         private void OnEditorPartEvent(ConstructionEventType eventType, Part part) {
+            // onEditorPartEvent carries every construction event, not only the gizmo moves. Picking a part
+            // up, dropping it, attaching or detaching it are placements KSP has already decided on, and
+            // they are not a move away from the pose we are following: an attach has just snapped the part
+            // onto a node, so truncating it would leave the part off the node its attachment data says it
+            // sits on. Some do not even carry the part being followed -- PartDetached fires on the hovered
+            // part.
+            // Whatever KSP does to a part outside of a gizmo move, the pose it leaves it in is the one the
+            // next move has to start from, so the part simply stops being followed rather than being
+            // tracked across the event. The next gizmo move picks it up again where it really is.
+            if( !IsGizmoMove(eventType) ) {
+                if( this.previousPart != null ) {
+                    LOGGER.LogDebug($"[{eventType}] Not a gizmo move: no longer following {this.previousPart.partInfo.name}");
+                    this.previousPart = null;
+                }
+                return;
+            }
+
             if( 
                 part == this.previousPart && 
                 part.transform.position == this.previousPosition && 

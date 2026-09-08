@@ -40,6 +40,15 @@ Pendant le mode construction EVA, il écoute `GameEvents.onEditorPartEvent` et *
 déplacement demandé : la pièce avance jusqu'au contact réel du sol, moins la garde au sol réglable.
 Tout est dans [`Src/EvaCMGroundMod.cs`](Src/EvaCMGroundMod.cs).
 
+⚠️ **Seuls les déplacements au gizmo sont tronqués** (`PartOffsetting`, `PartOffset`, `PartRotating`,
+`PartRotated`) — filtre `IsGizmoMove`, ajouté le 2026-09-08. `onEditorPartEvent` porte dix types
+d'événements, et les autres sont des placements que KSP a déjà décidés : tronquer un `PartAttached`
+poserait la pièce **à côté du nœud** sur lequel ses données d'attachement disent qu'elle est, et
+`PartDetached` tire sur `hoveredPart`, donc sur une **autre pièce** que celle qu'on suit. Sur un
+événement non filtré on **cesse de suivre la pièce** (`previousPart = null`) plutôt que de conserver
+une pose de référence périmée : le prochain déplacement au gizmo repart de là où la pièce est
+vraiment.
+
 ⚠️ Ce n'était pas le cas avant le 2026-09-03 : le mod **refusait** le déplacement et reposait la
 pièce à sa dernière pose valide. La troncature remplace ce fonctionnement, parce qu'un refus laisse
 la pièce n'importe où au-dessus du sol, et que l'erreur s'accumule sur une base longue — les
