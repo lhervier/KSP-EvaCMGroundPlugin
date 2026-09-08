@@ -107,8 +107,24 @@ secondes) remet `PQSMin/PQSMax`, `hgt` et `nrm` d'aplomb.
 
 Depuis le 2026-09-08, [`Src/anchor/AnchoredBaseGroundKeeper.cs`](Src/anchor/AnchoredBaseGroundKeeper.cs)
 écrit les niveaux PQS attendus dans le `ProtoVessel`, sur `GameEvents.onProtoVesselLoad`, ce qui
-remet le vaisseau sur le chemin « rien à faire » de `GoOffRails`. Activé par défaut ; les quatre
-choix de conception sont résumés dans le [CLAUDE.md](CLAUDE.md) du mod.
+remet le vaisseau sur le chemin « rien à faire » de `GoOffRails`. Activé par défaut, via le réglage
+`keepAnchoredBaseGroundPosition` (il est resté à `false` le temps d'être éprouvé en jeu).
+
+Aucun lien avec la troncature de placement, et c'est délibéré : son propre addon, son propre
+réglage, aucun état partagé. Il mériterait un mod à part et pourra y être déplacé tel quel.
+
+**Quatre choix à ne pas défaire** :
+
+- **`onProtoVesselLoad`, pas `onVesselLoaded`** : un vaisseau ancré court-circuite les 75 frames de
+  *physics hold*, donc il se dépaquette immédiatement. Le hook doit être antérieur à l'existence du
+  `Vessel`, sinon il y a une course.
+- **Le tir depuis le constructeur `ProtoVessel(ConfigNode, Game)` est ignoré** (`action.to != null`) :
+  à ce moment rien n'est encore parsé.
+- **On ne touche pas à `vesselSpawning`** : c'est lui qui laisse une ancre qu'on vient de lâcher
+  recevoir son assise initiale.
+- **Variante conservatrice assumée** : on ne corrige que des niveaux à `0/0` (jamais initialisés, cas
+  de la pièce lâchée). Des niveaux simplement périmés veulent dire que le détail du terrain a
+  vraiment changé, et là la passe de KSP a une raison d'être.
 
 **Validé en jeu le 2026-09-08**, et le log donne un A/B propre sur le même vaisseau :
 

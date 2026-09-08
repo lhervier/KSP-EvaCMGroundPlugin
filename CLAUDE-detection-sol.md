@@ -67,6 +67,80 @@ plus un trou.
   peau du terrain n'est vue enterrée par personne, ni par ce test ni par la détection. Il couvre le
   cas qui figeait la pièce, pas celui qu'on ne sait pas détecter.
 
+## Pièges de géométrie déjà payés
+
+Quatre corrections de géométrie, toutes **silencieuses** : aucune n'a jamais produit d'erreur ni de
+ligne de log, chacune ne se voit qu'à la pose finale — la pièce s'enfonce, ou s'arrête trop tôt.
+Aucune ne se déduit de la documentation Unity ; les redécouvrir coûte une séance.
+
+### Deux variables à ne jamais refusionner
+
+Corrigé le 2026-09-02. `GetBoxColliders`, `GetCapsuleColliders`, `GetSphereColliders` et
+`GetMeshColliders` séparent :
+
+- `volumeWorldCenter` = `transform.TransformPoint(collider.center)` + décalage sol → pour la phase
+  large (`Physics.Overlap*`) ;
+- `transformWorldPosition` = `transform.position` + décalage sol → pour `GetPenetratingColliders`,
+  donc `Physics.ComputePenetration`.
+
+Le décalage sol (`GetGroundOffsetVector`) s'applique **aux deux**. Avant le correctif, une seule
+variable `center` servait aux deux rôles, et la phase large cherchait au mauvais endroit pour tout
+collider décalé de l'origine de son transform : la pièce se posait dans le sol sans la moindre
+erreur. `GetMeshColliders` avait déjà le bon schéma et sert de modèle.
+
+### `Collider.bounds` est déjà en espace monde
+
+Corrigé le 2026-09-03. `GetMeshColliders` bâtit son volume de recherche sur `meshCollider.bounds` :
+ses extents sont **déjà** en unités monde (pas de `lossyScale` à appliquer) et ses axes sont **déjà**
+ceux du monde, d'où `Quaternion.identity` en rotation. Remultiplier par `lossyScale` gonflait la
+boîte (×20 sur certaines pièces, ×0,5 sur d'autres) et lui appliquer `transform.rotation` permutait
+ses dimensions entre axes. Le récit de la découverte et les mesures sont plus bas, § « Impasses ».
+
+### Seuls les colliders solides comptent — des deux côtés
+
+Corrigé le 2026-09-08. Un **trigger** est un volume qu'un module surveille, pas une surface sur
+laquelle on pose quelque chose, et rien ne l'oblige à rester sur le calque « Part Triggers » :
+`ModuleRobotArmScanner` accroche au bras une `SphereCollider` de **4 m de rayon**, `isTrigger = true`,
+sur le calque **Local Scenery**
+([`ModuleRobotArmScanner.cs:548-556`](file:///d:/ksp-decompiled/Expansions.Serenity/ModuleRobotArmScanner.cs#L548)).
+Un collider **désactivé** (`enabled == false`) est, lui, hors de la scène physique — mais
+`GetComponentsInChildren<Collider>()` le rend quand même.
+
+Le mod ne filtrait ces triggers que **du côté touché** (les colliders rendus par la phase large et par
+les casts), et par un cas particulier sur le nom `rangeTrigger`. Du côté **mobile** — la liste des
+colliders de la pièce déplacée — rien : déplacer une pièce portant un tel trigger l'arrêtait **4 m
+au-dessus du sol**.
+
+Depuis, les deux côtés appliquent la même règle, et le cas particulier `rangeTrigger` a disparu :
+
+- côté mobile, `GetSolidColliders(part)` écarte `!enabled || isTrigger` à la construction de la liste ;
+- côté touché, les quatre `Physics.Overlap*` passent `QueryTriggerInteraction.Ignore` — les casts le
+  faisaient déjà, d'où un filtre `rangeTrigger` qui y était de toute façon mort.
+
+⚠️ Le `LAYER_MASK` ne suffit pas : il exclut le calque « Part Triggers », mais un trigger peut vivre
+ailleurs, et c'est justement le cas de celui-là.
+
+### La garde au sol est une vraie distance — appliquée **une seule fois**, verticalement
+
+Depuis la troncature, le paramètre n'est plus un biais sur un test booléen : la pièce s'immobilise
+précisément à cette hauteur du sol. À 0 elle se pose au contact franc — une marge strictement
+positive garantit en revanche que la pose enregistrée est franchement non chevauchante malgré les
+arrondis. **Défaut : 0 depuis le 2026-09-08** (il était de 1 cm) ; plafond 10 cm, curseur toujours
+en place. Lionel veut jouer sans marge et jugera sur pièce s'il faut la rétablir.
+
+⚠️ **Elle s'applique en un seul endroit : `GetGroundOffsetVector`**, qui descend le volume de test le
+long de la verticale locale (`-up`) avant chaque `Physics.Overlap*` et chaque `ComputePenetration`.
+La dichotomie rend donc déjà une pose dégagée de cette hauteur, et `GetReachablePosition` **ne la
+retranche plus** de la distance parcourue. Corrigé le 2026-09-08 : elle l'était, ce qui la comptait
+**deux fois** — une fois à la verticale, une fois le long du déplacement — pour une garde effective
+entre 1× et 2× le réglage selon l'angle. Sans conséquence observable au défaut actuel (0), mais
+mortel dès que le curseur bouge. Ce correctif clôt du même coup l'ancien « chantier ouvert » sur
+l'axe : la garde est désormais **verticale**, comme son nom le dit.
+
+Reste vrai, et volontaire : le `+ GroundOffset` du `backoff` de `GetCastDistance` n'a rien à voir. Il
+recule l'origine du cast et se retranche du résultat, donc il s'annule ; il ne fait qu'offrir de la
+place au cast pour démarrer.
+
 ## Angles morts connus
 
 ### Les colliders concaves sont invisibles
@@ -122,8 +196,9 @@ pré-test au centre des colliders, est **caduque**.
   l'est dans le chemin de **saisie**, pas de déplacement. D'où les casts par collider, qui ne
   demandent aucun rigidbody — au prix d'une boîte englobante en doublure pour les `MeshCollider`,
   Unity ne balayant pas de maillage arbitraire.
-- **Se fier à `lossyScale` sans le mesurer.** Avant correctif, la phase large multipliait les extents
-  de `bounds` par `lossyScale` — alors que `Collider.bounds` est déjà en espace monde. Sur le Basic
+- **Se fier à `lossyScale` sans le mesurer** (la règle : § « `Collider.bounds` est déjà en espace
+  monde » ci-dessus). Avant correctif, la phase large multipliait les extents de `bounds` par
+  `lossyScale` — alors que `Collider.bounds` est déjà en espace monde. Sur le Basic
   Fin, `lossyScale` vaut **20** (échelle enfouie dans la hiérarchie du `.mu`, pas dans
   `rescaleFactor` ni dans le nœud `MODEL`) : la boîte était 20× trop grande et masquait tout. Sur
   l'Oscar-B elle vaut **(0.500, 0.187, 0.500)**, donc trop petite dans toutes les orientations.
@@ -153,6 +228,21 @@ pré-test au centre des colliders, est **caduque**.
   la fenêtre de settings du mod.
 
 ## Pièces de test
+
+**Pièce de reproduction du bug `center` : TT-70 Radial Decoupler (`radialDecoupler2`).** Le cas
+d'école, pour trois raisons cumulées :
+
+- **un seul collider**, et pas de `MeshCollider` : rien ne peut masquer le défaut dans la boucle
+  `foreach (Collider collider in colliders)` ;
+- volumes **totalement disjoints** (décalage 0,4455 m contre 0,101 m de demi-épaisseur, 0,243 m de
+  trou entre les deux) : jamais détecté, à aucune profondeur ;
+- `mass = 0.05 t` → 490 N, sous la limite de 588,4 N : portable par un ingénieur seul **sur Kerbin**.
+  `packedVolume = 750` L en revanche, trop gros pour l'inventaire personnel : le saisir sur le
+  vaisseau, ou le sortir d'un conteneur.
+
+⚠️ **Mauvaise pièce pour valider la troncature**, en revanche : jusqu'à 0,58 m de son treillis n'a
+aucun collider, donc il s'enfonce visuellement de façon parfaitement normale. Pour ça, prendre
+l'**Oscar-B vidé de ses ergols**, juste en dessous.
 
 **Oscar-B (`miniFuelTank`)** — la référence pour la traversée du sol :
 
