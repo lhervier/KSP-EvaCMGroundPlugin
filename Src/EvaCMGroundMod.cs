@@ -802,6 +802,9 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
 
             targetPosition = GetReachablePosition(part, colliders, this.previousPosition, targetPosition);
             part.transform.position = targetPosition;
+            // GetSweepStepCount below sizes its step on Collider.bounds, which the physics scene answers
+            // and which therefore does not follow a transform written from a script.
+            Physics.SyncTransforms();
 
             // The rotation is still walked pose by pose: a sweep travels in a straight line and cannot
             // express it, while a collider away from the part origin travels an arc that steps over a
