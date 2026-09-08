@@ -110,6 +110,13 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
 
         public void OnEVAConstructionMode(bool mode) {
             LOGGER.LogDebug($"OnEVAConstructionMode: {mode}");
+
+            // Both ways: the pose we remember only makes sense inside a single construction
+            // session. Entering the mode again and grabbing the same part would otherwise match
+            // "part == previousPart" and keep a stale reference pose, which the sweep would use as
+            // its origin (and, on a blocked move, restore the part to).
+            this.previousPart = null;
+
             if( mode ) {
                 LOGGER.LogDebug("Starting Fix");
                 GameEvents.onEditorPartEvent.Add(OnEditorPartEvent);
