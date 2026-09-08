@@ -102,6 +102,30 @@ ceux du monde, d'où `Quaternion.identity` en rotation. Remultiplier par `lossyS
 boîte (×20 sur certaines pièces, ×0,5 sur d'autres) et lui appliquer `transform.rotation` permutait
 ses dimensions entre axes. Détail et mesures dans [CLAUDE-detection-sol.md](CLAUDE-detection-sol.md).
 
+## Seuls les colliders solides comptent — des deux côtés
+
+Corrigé le 2026-09-08. Un **trigger** est un volume qu'un module surveille, pas une surface sur
+laquelle on pose quelque chose, et rien ne l'oblige à rester sur le calque « Part Triggers » :
+`ModuleRobotArmScanner` accroche au bras une `SphereCollider` de **4 m de rayon**, `isTrigger = true`,
+sur le calque **Local Scenery**
+([`ModuleRobotArmScanner.cs:548-556`](file:///d:/ksp-decompiled/Expansions.Serenity/ModuleRobotArmScanner.cs#L548)).
+Un collider **désactivé** (`enabled == false`) est, lui, hors de la scène physique — mais
+`GetComponentsInChildren<Collider>()` le rend quand même.
+
+Le mod ne filtrait ces triggers que **du côté touché** (les colliders rendus par la phase large et par
+les casts), et par un cas particulier sur le nom `rangeTrigger`. Du côté **mobile** — la liste des
+colliders de la pièce déplacée — rien : déplacer une pièce portant un tel trigger l'arrêtait **4 m
+au-dessus du sol**.
+
+Depuis, les deux côtés appliquent la même règle, et le cas particulier `rangeTrigger` a disparu :
+
+- côté mobile, `GetSolidColliders(part)` écarte `!enabled || isTrigger` à la construction de la liste ;
+- côté touché, les quatre `Physics.Overlap*` passent `QueryTriggerInteraction.Ignore` — les casts le
+  faisaient déjà, d'où un filtre `rangeTrigger` qui y était de toute façon mort.
+
+⚠️ Le `LAYER_MASK` ne suffit pas : il exclut le calque « Part Triggers », mais un trigger peut vivre
+ailleurs, et c'est justement le cas de celui-là.
+
 ## La garde au sol est une vraie distance
 
 Depuis la troncature, le paramètre n'est plus un biais sur un test booléen : il est **retranché du

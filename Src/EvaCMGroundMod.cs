@@ -23,7 +23,10 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
         public static float GroundOffset { get; set; } = EvaCMGroundSettings.GroundOffsetDefault;
 
         /// <summary>
-        /// Layer mask for the colliders that we want to check.
+        /// Layer mask for the colliders that we want to check. Layers alone do not say what is solid:
+        /// every query below also passes QueryTriggerInteraction.Ignore, because a trigger is a volume a
+        /// module watches, not something a part can rest on, and nothing keeps one on a solid layer --
+        /// ModuleRobotArmScanner puts a 4 m trigger sphere on Local Scenery.
         //  Layer 0: Default
         //  Layer 1: TransparentFX
         //  Layer 2: Ignore Raycast
@@ -149,11 +152,6 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
             // Filtering the colliders that have a real penetration
             List<Collider> penetratingColliders = new List<Collider>();
             foreach (Collider otherCollider in potentialColliders) {
-                // Colliders for analyse arms are not considered as colliding
-                if( otherCollider.name == "rangeTrigger" && otherCollider.gameObject.layer == 15) {     // Local Scenery
-                    LOGGER.LogDebug($"Skipping rangeTrigger collider...");
-                    continue;
-                }
                 if (Physics.ComputePenetration(
                     collider,
                     // The dropped position, not collider.transform.position: this test is the one that
@@ -240,7 +238,8 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
                 volumeWorldCenter,
                 scaledSize * 0.5f,
                 rotation,
-                LAYER_MASK
+                LAYER_MASK,
+                QueryTriggerInteraction.Ignore
             );
             return GetPenetratingColliders(boxCollider, transformWorldPosition, potentialColliders);
         }
@@ -306,7 +305,8 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
                 point1,
                 point2,
                 scaledRadius,
-                LAYER_MASK
+                LAYER_MASK,
+                QueryTriggerInteraction.Ignore
             );
             return GetPenetratingColliders(capsuleCollider, transformWorldPosition, potentialColliders);
         }
@@ -327,7 +327,8 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
             Collider[] potentialColliders = Physics.OverlapSphere(
                 volumeWorldCenter,
                 scaledRadius,
-                LAYER_MASK
+                LAYER_MASK,
+                QueryTriggerInteraction.Ignore
             );
             return GetPenetratingColliders(sphereCollider, transformWorldPosition, potentialColliders);
         }
@@ -344,7 +345,8 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
                 meshCollider.bounds.center + offset,
                 meshCollider.bounds.extents,
                 Quaternion.identity,
-                LAYER_MASK
+                LAYER_MASK,
+                QueryTriggerInteraction.Ignore
             );
 
             return GetPenetratingColliders(meshCollider, meshCollider.transform.position + offset, potentialColliders);
@@ -523,10 +525,6 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
 
             float reachable = distance;
             foreach (RaycastHit hit in hits) {
-                // Colliders for analyse arms are not considered as colliding
-                if (hit.collider.name == "rangeTrigger" && hit.collider.gameObject.layer == 15) {     // Local Scenery
-                    continue;
-                }
                 reachable = Mathf.Min(reachable, Mathf.Max(0f, hit.distance - backoff));
             }
             return reachable;
@@ -648,6 +646,26 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
         }
 
         /// <summary>
+        /// The colliders of <paramref name="part"/> that take part in collisions, the only ones this fix
+        /// has any reason to keep out of the ground.
+        /// </summary>
+        private static Collider[] GetSolidColliders(Part part) {
+            List<Collider> solidColliders = new List<Collider>();
+            foreach (Collider collider in part.GetComponentsInChildren<Collider>()) {
+                // A trigger has no solidity: it is a volume a module watches for something entering it, and
+                // it is usually far larger than the part. ModuleRobotArmScanner hangs a 4 m sphere off the
+                // arm that way, which would stop the part 4 m above the ground.
+                // A disabled collider is out of the physics scene entirely, so nothing can rest on it
+                // either, but GetComponentsInChildren still hands it over.
+                if (!collider.enabled || collider.isTrigger) {
+                    continue;
+                }
+                solidColliders.Add(collider);
+            }
+            return solidColliders.ToArray();
+        }
+
+        /// <summary>
         /// Whether <paramref name="part"/> is in the ground in the pose it currently holds.
         /// </summary>
         private bool IsPoseInGround(Part part, Collider[] colliders) {
@@ -711,7 +729,7 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
                 this.previousRotation = part.transform.rotation;
             }
 
-            Collider[] colliders = part.GetComponentsInChildren<Collider>();
+            Collider[] colliders = GetSolidColliders(part);
             Vector3 targetPosition = part.transform.position;
             Quaternion targetRotation = part.transform.rotation;
 
