@@ -1,7 +1,19 @@
 # EVA Construction Mode Ground Fix
 
-A Kerbal Space Program mod that prevents parts from being placed underground during EVA Construction
-Mode.
+A Kerbal Space Program mod that fixes two independent bugs affecting bases built in EVA Construction
+Mode:
+
+1. **Parts can be placed underground.** Nothing in the game refuses it, and the damage only shows up
+   on the next reload, when KSP tries to put the vessel back above the surface.
+2. **A base built on a ground anchor rises out of the ground at every reload.** KSP puts it back down
+   on the terrain each time it loads, which pulls the anchor's spikes out and welds them a little
+   higher. This one has nothing to do with where the player put the parts.
+
+Both are active as soon as the mod is installed, and each can be turned off on its own.
+
+---
+
+# Fix 1 — Parts placed underground
 
 ## The problem
 
@@ -67,8 +79,8 @@ This mod attacks the problem at the source: rather than repairing the vessel on 
 invalid placement impossible in the first place. Step 4 above simply cannot happen — the part refuses
 to go below the surface, so the reloaded structure is exactly the one that was built.
 
-While EVA Construction Mode is on, the mod watches every part being moved, and as soon as a part
-would touch the ground it is put back where it last was.
+While EVA Construction Mode is on, the mod watches every part being moved and **truncates** the
+requested move: the part travels up to the real ground contact, minus the configured ground offset.
 
 ## Technical details
 
@@ -78,27 +90,70 @@ would touch the ground it is put back where it last was.
 - Box, capsule, sphere and mesh colliders are all supported.
 - The test volume is dropped by the configured *ground offset*, so a part is refused slightly before
   it actually reaches the surface.
-- The last valid position and rotation of the part are kept, and restored whenever an invalid
-  placement is detected.
+- The move is truncated rather than refused, so a part always ends up in contact with the ground
+  instead of anywhere above it.
 
-## Second fix: anchored bases that rise at every load
+---
 
-Optional, and off by default. It addresses a different KSP bug, the one behind step 5 above in
-stock: a landed base built on a ground anchor is put back down on the terrain **every time it
-loads**, which pulls the anchor's spikes out of the ground, welds them at that new height, and so
-raises the base a little more at each cycle.
+# Fix 2 — Anchored bases that rise at every reload
+
+## The problem
+
+This one is not about where the player puts the parts. Merely *touching* a part is enough — even
+moving it **upwards**, away from the ground.
+
+### 1. An engineer deploys a ground anchor
+
+![A ground anchor deployed on the surface](docs/ground-anchor/00-Anchor.png)
+
+### 2. A part is attached to it in EVA Construction Mode
+
+![A fuel tank attached to the anchor](docs/ground-anchor/10-Add-part.png)
+
+### 3. The part is moved up, well clear of the ground
+
+The offset gizmo pulls the tank *away* from the surface, so nothing here can possibly be a case of a
+part being pushed underground.
+
+![The tank is moved up with the offset gizmo](docs/ground-anchor/20-move.png)
+
+### 4. Save, reload — and the anchor has taken off
+
+The anchor's spikes are out of the ground and the whole assembly floats above the grass. Do it again
+and it climbs a little higher.
+
+![After reload, the anchor floats above the ground](docs/ground-anchor/30-Anchor-in-the-air.png)
+
+## The fix
+
+With the mod installed, the very same save reloads with the anchor firmly seated where it was built.
+
+![After reload with the fix, the anchor is properly on the ground](docs/ground-anchor/50-Reload.png)
+
+What is really happening is that the saved position was right all along: KSP was lifting the vessel
+at load time, and the fix simply stops it from doing so.
+
+## Technical details
 
 `Vessel.GoOffRails` only spares a landed vessel whose stored PQS subdivision levels match the live
-terrain controller. A part dropped in EVA Construction Mode is created with those levels set to
-zero, so the vessel it becomes never passes that test, and `CheckGroundCollision` re-grounds it at
-every load — with the 10 cm dead zone that would normally absorb the correction explicitly disabled
-for a vessel whose root part is a ground part. `KSP.log` shows it as
-`ground contact! - error. Moving Vessel up 0.001m`.
+terrain controller. A part dropped in EVA Construction Mode is created with those levels set to zero
+(`EVAConstructionModeEditor.GetProtoVesselNode` writes them in), so the vessel it becomes never
+passes that test and `CheckGroundCollision` re-grounds it at every load — placing it so that its
+lowest collider point rests exactly on the terrain, which for an anchor means spikes in the air. The
+10 cm dead zone that would normally absorb such a small correction is *explicitly disabled* for a
+vessel whose root part is a ground part, so an anchored base swallows corrections nothing else would.
+`KSP.log` shows the pass as `ground contact! - error. Moving Vessel up 0.001m`.
 
-The fix writes the levels the vessel should have had, so KSP takes its normal "nothing to do here"
-path. It only ever touches a landed vessel that carries a deployed ground anchor **and** was saved
-with uninitialized levels; a base whose levels are merely out of date (the terrain detail setting
-really did change) is left to KSP, and a freshly dropped anchor still gets its initial seating.
+The fix hooks `GameEvents.onProtoVesselLoad` and writes the levels the vessel should have had, which
+puts KSP back on its normal "nothing to do here" path. It only ever touches a landed vessel that
+carries a deployed ground anchor **and** was saved with uninitialized levels; a base whose levels are
+merely out of date (the terrain detail setting really did change) is left to KSP, and a freshly
+dropped anchor still gets its initial seating.
+
+It is also curative rather than palliative: the levels it writes are persisted by the next save, so
+a base only needs to be loaded once with the fix on to be repaired for good.
+
+---
 
 ## Settings
 
@@ -109,18 +164,18 @@ small settings window:
 - **Ground offset** - how close to the ground a part may come before the placement is refused
   (0.010 m by default). Raise it if parts still end up buried, lower it if they refuse to sit on the
   surface.
-- **Keep anchored bases in place** - the second fix above (off by default). Takes effect at the next
-  load, since a vessel already in the scene has been positioned already.
+- **Keep anchored bases in place** - fix 2 above, on by default. Takes effect at the next load, since
+  a vessel already in the scene has been positioned already.
 
 They are settings of the *installation*, not of a save: they are stored in
 `GameData/EvaCMGroundMod/PluginData/settings.cfg` and applied as soon as they are changed. Deleting
-that file restores the defaults, which leaves the second fix off.
+that file restores the defaults, which have both fixes on.
 
 ## Installation
 
 1. Download the latest release
 2. Extract the contents to your KSP GameData folder
-3. The mod will automatically activate when you enter EVA Construction Mode
+3. Fix 1 activates when you enter EVA Construction Mode, fix 2 at the next vessel load
 
 ## Requirements
 
