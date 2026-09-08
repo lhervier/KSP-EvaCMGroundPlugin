@@ -30,10 +30,11 @@ namespace com.github.lhervier.ksp.evacmgroundmod.settings
         public const float GroundOffsetDefault = 0.01f;
 
         /// <summary>
-        /// Default for <see cref="KeepAnchoredBaseGroundPosition"/>: off. Deleting the settings file is
-        /// therefore all it takes to get stock behaviour back.
+        /// Default for <see cref="KeepAnchoredBaseGroundPosition"/>: on, like the placement fix. The bug
+        /// it addresses has no upside, so a fresh install is protected without the player having to find
+        /// the setting; unchecking it is the escape hatch, not the starting point.
         /// </summary>
-        public const bool KeepAnchoredBaseGroundPositionDefault = false;
+        public const bool KeepAnchoredBaseGroundPositionDefault = true;
 
         private readonly string _path;
 

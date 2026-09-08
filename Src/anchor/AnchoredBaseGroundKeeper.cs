@@ -8,8 +8,8 @@ namespace com.github.lhervier.ksp.evacmgroundmod.anchor
     /// KSP put it back down on the terrain every time it loads — a pass that lifts the anchor's spikes
     /// out of the ground, welds them there, and so raises the base a little more at each cycle.
     ///
-    /// Does nothing unless <see cref="Enabled"/> is set, and touches no vessel other than an anchored
-    /// base saved with uninitialized PQS levels.
+    /// Touches no vessel other than an anchored base saved with uninitialized PQS levels, and nothing at
+    /// all while <see cref="Enabled"/> is off.
     ///
     /// Independent of the placement fix on purpose — its own addon, its own setting, no shared state —
     /// so it can be lifted into a mod of its own without untangling anything.
@@ -23,10 +23,10 @@ namespace com.github.lhervier.ksp.evacmgroundmod.anchor
         private const string DeployedField = "deployedOnGround";
 
         /// <summary>
-        /// Whether loaded vessels are protected. Off by default, so an install without a settings file
-        /// behaves exactly like stock KSP. Owned by the settings, applied by the view model.
+        /// Whether loaded vessels are protected. Owned by the settings, which apply the stored value at
+        /// startup — before any vessel can load — and the shipped default is on.
         /// </summary>
-        public static bool Enabled = false;
+        public static bool Enabled = true;
 
         private static AnchoredBaseGroundKeeper _instance;
 

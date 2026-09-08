@@ -103,12 +103,43 @@ posé »**, et c'est ça — pas la masse, pas la géométrie — qui armait le 
 manipulation (ou simplement le fait de charger la scène et de laisser le vaisseau vivre quelques
 secondes) remet `PQSMin/PQSMax`, `hgt` et `nrm` d'aplomb.
 
-## Le contournement
+## Le correctif du mod
+
+Depuis le 2026-09-08, [`Src/anchor/AnchoredBaseGroundKeeper.cs`](Src/anchor/AnchoredBaseGroundKeeper.cs)
+écrit les niveaux PQS attendus dans le `ProtoVessel`, sur `GameEvents.onProtoVesselLoad`, ce qui
+remet le vaisseau sur le chemin « rien à faire » de `GoOffRails`. Activé par défaut ; les quatre
+choix de conception sont résumés dans le [CLAUDE.md](CLAUDE.md) du mod.
+
+**Validé en jeu le 2026-09-08**, et le log donne un A/B propre sur le même vaisseau :
+
+```
+17:35:21  [Mod] ... anchored base ground position kept: False
+17:36:20  [Point d'ancrage Coll-O-Tron]: ground contact! - error. Moving Vessel  down -0.025m
+17:36:20  [ModuleCargoPart]: Part Point d'ancrage Coll-O-Tron ... riveting to the ground.
+          --- option activée ---
+17:37:04  [AnchorKeeper] 'Point d'ancrage Coll-O-Tron' is an anchored base saved without PQS levels:
+          keeping it at alt=64.857 m ... (levels set to 2/10)
+17:37:11  [ModuleCargoPart]: Part Point d'ancrage Coll-O-Tron ... riveting to the ground.
+```
+
+La ligne `Moving Vessel` disparaît, le rivetage reste (c'est normal), et aucun autre vaisseau de la
+scène n'est touché. Observation du joueur qui vaut confirmation du mécanisme : **la position
+sauvegardée était juste depuis le début** — option désactivée l'ancre flottait au-dessus du sol,
+option activée elle se recharge posée franchement. Ce n'est pas le fix qui la redescend, c'est la
+passe de KSP qui la soulevait.
+
+⚠️ **Le correctif est curatif, pas seulement palliatif.** Les niveaux écrits sont ensuite persistés
+(`checkLanded` les maintient, `BackupVessel` les enregistre) : mesuré sur le banc de test, la
+sauvegarde d'après porte `PQSMin/PQSMax = 2/10` au lieu de `0/0`. Ce vaisseau-là ne sera donc plus
+jamais recalé, **même option redésactivée**. Une base ne demande qu'un seul chargement protégé pour
+être réparée définitivement.
+
+## Le contournement, sans le mod
 
 **Après avoir posé une pièce, laisser la scène vivre une dizaine de secondes, sauvegarder, puis
 recharger une fois et re-sauvegarder.** Le premier rechargement encaisse le recalage et remet
 `PQSMin/PQSMax` en phase ; à partir de là `skipGroundPositioning` vaut `true` et KSP ne touche plus
-au vaisseau.
+au vaisseau. C'est le même mécanisme de réparation que le correctif, en payant un recalage.
 
 Et **ne pas changer le réglage de détail du terrain** avec des bases ancrées en jeu.
 

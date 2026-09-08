@@ -50,8 +50,8 @@ Depuis le 2026-09-08, le mod embarque aussi
 de **reposer une base ancrée sur le terrain à chaque chargement** — le bug documenté dans
 [CLAUDE-rechargement.md](CLAUDE-rechargement.md). Il écrit `PQSminLevel`/`PQSmaxLevel` dans le
 `ProtoVessel`, sur `GameEvents.onProtoVesselLoad`, ce qui remet le vaisseau sur le chemin « rien à
-faire » de `Vessel.GoOffRails`. **Désactivé par défaut** (réglage
-`keepAnchoredBaseGroundPosition`) : supprimer le fichier de réglages suffit à revenir au stock.
+faire » de `Vessel.GoOffRails`. **Activé par défaut** depuis le 2026-09-08 — il l'était à
+`false` le temps de l'éprouver en jeu — via le réglage `keepAnchoredBaseGroundPosition`.
 
 Il n'a **aucun lien** avec la troncature de placement, et c'est délibéré : son propre addon, son
 propre réglage, aucun état partagé. Il mériterait un mod à part et pourra y être déplacé tel quel.
