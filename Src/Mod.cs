@@ -1,5 +1,6 @@
 using UnityEngine;
 using com.github.lhervier.ksp.shared;
+using com.github.lhervier.ksp.evacmgroundmod.anchor;
 using com.github.lhervier.ksp.evacmgroundmod.settings;
 
 namespace com.github.lhervier.ksp.evacmgroundmod
@@ -23,7 +24,9 @@ namespace com.github.lhervier.ksp.evacmgroundmod
             settings.Load();
             ModLogger.SetLogLevel(settings.LogLevel);
             EvaCMGroundMod.GroundOffset = settings.GroundOffset;
-            LOGGER.LogInfo($"Log level set to {settings.LogLevel}, ground offset set to {settings.GroundOffset} m");
+            AnchoredBaseGroundKeeper.Enabled = settings.KeepAnchoredBaseGroundPosition;
+            LOGGER.LogInfo($"Log level set to {settings.LogLevel}, ground offset set to {settings.GroundOffset} m"
+                + $", anchored base ground position kept: {settings.KeepAnchoredBaseGroundPosition}");
         }
     }
 }

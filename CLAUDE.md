@@ -23,9 +23,13 @@ Le détail des enquêtes est sorti d'ici pour ne pas alourdir la lecture courant
   `lossyScale`), les pièces de test et la méthode de lecture des logs. **À lire avant de toucher à
   `GetReachablePosition`, `GetCastDistance`, `IsPoseInGround` ou au balayage.**
 - **[CLAUDE-rechargement.md](CLAUDE-rechargement.md)** — « la base monte quand je recharge » :
-  **ce n'est pas le mod**, c'est la masse de stabilisation de `ModuleCargoPart` qui fausse l'altitude
-  enregistrée quand on sauvegarde trop tôt après avoir posé une pièce. Contournement, et les trois
-  fausses pistes mesurées avant d'y arriver. **À lire dès que quelqu'un impute au mod un
+  **ce n'est pas le mod**, c'est `Vessel.CheckGroundCollision` qui repose le vaisseau « point le plus
+  bas des colliders sur le terrain » à chaque chargement, parce que `PQSMin`/`PQSMax` de la
+  sauvegarde ne correspondent pas au `pqsController` courant — et parce que la zone morte de 10 cm
+  qui absorberait la correction est désactivée quand la racine porte un `ModuleGroundPart`.
+  Contournement, la méthode de mesure (diff de `.sfs`, ligne `Moving Vessel` du log), et les quatre
+  fausses pistes — **dont la masse de stabilisation de `ModuleCargoPart`, qui était l'explication
+  écrite ici jusqu'au 2026-09-08 et qui est réfutée**. **À lire dès que quelqu'un impute au mod un
   déplacement constaté au rechargement.**
 
 ## Ce que fait le mod, en une phrase
@@ -38,6 +42,31 @@ Tout est dans [`Src/EvaCMGroundMod.cs`](Src/EvaCMGroundMod.cs).
 pièce à sa dernière pose valide. La troncature remplace ce fonctionnement, parce qu'un refus laisse
 la pièce n'importe où au-dessus du sol, et que l'erreur s'accumule sur une base longue — les
 contraintes se paient au démarrage de la physique.
+
+## Le second correctif, sans rapport avec le premier
+
+Depuis le 2026-09-08, le mod embarque aussi
+[`Src/anchor/AnchoredBaseGroundKeeper.cs`](Src/anchor/AnchoredBaseGroundKeeper.cs), qui empêche KSP
+de **reposer une base ancrée sur le terrain à chaque chargement** — le bug documenté dans
+[CLAUDE-rechargement.md](CLAUDE-rechargement.md). Il écrit `PQSminLevel`/`PQSmaxLevel` dans le
+`ProtoVessel`, sur `GameEvents.onProtoVesselLoad`, ce qui remet le vaisseau sur le chemin « rien à
+faire » de `Vessel.GoOffRails`. **Désactivé par défaut** (réglage
+`keepAnchoredBaseGroundPosition`) : supprimer le fichier de réglages suffit à revenir au stock.
+
+Il n'a **aucun lien** avec la troncature de placement, et c'est délibéré : son propre addon, son
+propre réglage, aucun état partagé. Il mériterait un mod à part et pourra y être déplacé tel quel.
+Quatre choix à ne pas défaire sans relire le fichier de contexte :
+
+- **`onProtoVesselLoad`, pas `onVesselLoaded`** : un vaisseau ancré court-circuite les 75 frames de
+  *physics hold*, donc il se dépaquette immédiatement. Le hook doit être antérieur à l'existence du
+  `Vessel`, sinon il y a une course.
+- **Le tir depuis le constructeur `ProtoVessel(ConfigNode, Game)` est ignoré** (`action.to != null`) :
+  à ce moment rien n'est encore parsé.
+- **On ne touche pas à `vesselSpawning`** : c'est lui qui laisse une ancre qu'on vient de lâcher
+  recevoir son assise initiale.
+- **Variante conservatrice assumée** : on ne corrige que des niveaux à `0/0` (jamais initialisés, cas
+  de la pièce lâchée). Des niveaux simplement périmés veulent dire que le détail du terrain a
+  vraiment changé, et là la passe de KSP a une raison d'être.
 
 ## Deux variables à ne jamais refusionner
 

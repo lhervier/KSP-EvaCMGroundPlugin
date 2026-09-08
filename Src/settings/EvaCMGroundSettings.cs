@@ -29,6 +29,12 @@ namespace com.github.lhervier.ksp.evacmgroundmod.settings
         /// <summary>Default ground offset (m), i.e. the value the mod shipped with.</summary>
         public const float GroundOffsetDefault = 0.01f;
 
+        /// <summary>
+        /// Default for <see cref="KeepAnchoredBaseGroundPosition"/>: off. Deleting the settings file is
+        /// therefore all it takes to get stock behaviour back.
+        /// </summary>
+        public const bool KeepAnchoredBaseGroundPositionDefault = false;
+
         private readonly string _path;
 
         /// <summary>How verbose the mod's logging is.</summary>
@@ -39,6 +45,12 @@ namespace com.github.lhervier.ksp.evacmgroundmod.settings
         /// The bigger it is, the earlier a part is declared to be in the ground.
         /// </summary>
         public float GroundOffset { get; set; }
+
+        /// <summary>
+        /// Whether a landed base built on a ground anchor is kept at the altitude it was saved at, rather
+        /// than being put back down on the terrain by KSP at every load.
+        /// </summary>
+        public bool KeepAnchoredBaseGroundPosition { get; set; }
 
         public EvaCMGroundSettings()
         {
@@ -52,6 +64,7 @@ namespace com.github.lhervier.ksp.evacmgroundmod.settings
             // Same default as the sibling mods: what the player is meant to see in KSP.log, no more.
             LogLevel = LogLevel.Info;
             GroundOffset = GroundOffsetDefault;
+            KeepAnchoredBaseGroundPosition = KeepAnchoredBaseGroundPositionDefault;
         }
 
         /// <summary>Reads the settings file, falling back on the defaults when it is missing or unreadable.</summary>
@@ -92,7 +105,12 @@ namespace com.github.lhervier.ksp.evacmgroundmod.settings
             // would lift the test volume off the ground and a huge one would refuse every position.
             GroundOffset = UnityEngine.Mathf.Clamp(groundOffset, GroundOffsetMin, GroundOffsetMax);
 
-            LOGGER.LogInfo($"Settings loaded from {_path} (logLevel={LogLevel}, groundOffset={GroundOffset})");
+            bool keepAnchoredBase = KeepAnchoredBaseGroundPosition;
+            general.TryGetValue("keepAnchoredBaseGroundPosition", ref keepAnchoredBase);
+            KeepAnchoredBaseGroundPosition = keepAnchoredBase;
+
+            LOGGER.LogInfo($"Settings loaded from {_path} (logLevel={LogLevel}, groundOffset={GroundOffset}"
+                + $", keepAnchoredBaseGroundPosition={KeepAnchoredBaseGroundPosition})");
         }
 
         /// <summary>Writes the settings file, creating PluginData/ on first save.</summary>
@@ -104,6 +122,7 @@ namespace com.github.lhervier.ksp.evacmgroundmod.settings
                 ConfigNode general = root.AddNode(GeneralNode);
                 general.AddValue("logLevel", LogLevel.ToString());
                 general.AddValue("groundOffset", GroundOffset);
+                general.AddValue("keepAnchoredBaseGroundPosition", KeepAnchoredBaseGroundPosition);
 
                 Directory.CreateDirectory(Path.GetDirectoryName(_path));
                 root.Save(_path);

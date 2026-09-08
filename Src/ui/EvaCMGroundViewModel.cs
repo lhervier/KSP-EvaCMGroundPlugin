@@ -1,5 +1,6 @@
 using UnityEngine;
 using com.github.lhervier.ksp.shared;
+using com.github.lhervier.ksp.evacmgroundmod.anchor;
 using com.github.lhervier.ksp.evacmgroundmod.settings;
 
 namespace com.github.lhervier.ksp.evacmgroundmod.ui
@@ -24,12 +25,17 @@ namespace com.github.lhervier.ksp.evacmgroundmod.ui
         public readonly EventVoid OnGroundOffsetChanged =
             new EventVoid("EvaCMGroundViewModel.OnGroundOffsetChanged");
 
+        /// <summary>Fired whenever <see cref="KeepAnchoredBaseGroundPosition"/> changes.</summary>
+        public readonly EventVoid OnKeepAnchoredBaseGroundPositionChanged =
+            new EventVoid("EvaCMGroundViewModel.OnKeepAnchoredBaseGroundPositionChanged");
+
         /// <summary>Binds the view model to the settings and applies them. Call once, right after AddComponent.</summary>
         public EvaCMGroundViewModel WithSettings(EvaCMGroundSettings settings)
         {
             _settings = settings;
             ModLogger.SetLogLevel(settings.LogLevel);
             EvaCMGroundMod.GroundOffset = settings.GroundOffset;
+            AnchoredBaseGroundKeeper.Enabled = settings.KeepAnchoredBaseGroundPosition;
             return this;
         }
 
@@ -74,6 +80,32 @@ namespace com.github.lhervier.ksp.evacmgroundmod.ui
                 _settings.Save();
                 EvaCMGroundMod.GroundOffset = snapped;
                 OnGroundOffsetChanged.Fire();
+            }
+        }
+
+        /// <summary>
+        /// Whether a landed base built on a ground anchor is kept at the altitude it was saved at, rather
+        /// than being put back down on the terrain by KSP at every load. Takes effect at the next load:
+        /// a vessel already in the scene has been positioned already.
+        /// </summary>
+        public bool KeepAnchoredBaseGroundPosition
+        {
+            get
+            {
+                return _settings != null
+                    ? _settings.KeepAnchoredBaseGroundPosition
+                    : EvaCMGroundSettings.KeepAnchoredBaseGroundPositionDefault;
+            }
+            set
+            {
+                if (_settings == null || _settings.KeepAnchoredBaseGroundPosition == value)
+                {
+                    return;
+                }
+                _settings.KeepAnchoredBaseGroundPosition = value;
+                _settings.Save();
+                AnchoredBaseGroundKeeper.Enabled = value;
+                OnKeepAnchoredBaseGroundPositionChanged.Fire();
             }
         }
     }

@@ -15,10 +15,10 @@ namespace com.github.lhervier.ksp.evacmgroundmod.ui.styles
         // ==============================================================
 
         // Sized to its content rather than to a mockup: the log level combo, the ground offset field and
-        // the sentence that explains it. The width is set by that sentence (three lines at this size),
-        // the height by the three rows stacked.
+        // the sentence that explains it, then the anchored base checkbox and its own sentence. The width
+        // is set by those sentences (three lines each at this size), the height by the rows stacked.
         public const float WindowWidth = 340f;
-        public const float WindowHeight = 200f;
+        public const float WindowHeight = 290f;
 
         // ==============================================================
         // Content
@@ -45,6 +45,9 @@ namespace com.github.lhervier.ksp.evacmgroundmod.ui.styles
         // What the ground offset sentence needs at HintFontSize, wrapped to the window width: three
         // lines plus the leading. Reserved, not fitted (see ContentBuilder.BuildHint).
         public const float HintHeight = 48f;
+
+        // Same, for the anchored base sentence: one line more, it has a consequence to spell out.
+        public const float AnchorHintHeight = 64f;
 
         // Gap between a field's header row and its slider. Wider than the plain layout spacing on
         // purpose: the handle is as tall as the row above it, and without that air the two read as one

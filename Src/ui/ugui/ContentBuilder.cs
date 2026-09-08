@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 using com.github.lhervier.ksp.shared;
 using com.github.lhervier.ksp.shared.ugui;
+using com.github.lhervier.ksp.shared.ugui.checkbox;
 using com.github.lhervier.ksp.shared.ugui.combo;
 using com.github.lhervier.ksp.shared.ugui.slider;
 using com.github.lhervier.ksp.evacmgroundmod.settings;
@@ -12,8 +13,9 @@ namespace com.github.lhervier.ksp.evacmgroundmod.ui.ugui
 {
     /// <summary>
     /// Popup content (everything below the shared title bar): the log level combo, then the ground offset
-    /// field and the sentence that explains it. Mounted and stretched to fill the content host by the
-    /// PopupBuilder, so it only fills what it is given.
+    /// field and the sentence that explains it, then the anchored base checkbox and its own sentence.
+    /// Mounted and stretched to fill the content host by the PopupBuilder, so it only fills what it is
+    /// given.
     /// </summary>
     public class ContentBuilder : IUGUIBuilder<ContentController>
     {
@@ -53,12 +55,21 @@ namespace com.github.lhervier.ksp.evacmgroundmod.ui.ugui
                 rootGo.transform,
                 out TextMeshProUGUI groundOffsetValue);
 
-            BuildHint(rootGo.transform, "settingsGroundOffsetHint");
+            BuildHint(rootGo.transform, "settingsGroundOffsetHint", EvaCMGroundPalette.HintHeight);
+
+            // Greedy: the whole row toggles, the way a settings line is expected to behave.
+            CheckboxController keepAnchoredBaseCheckbox = new CheckboxBuilder()
+                .WithLabel(ModLocalization.GetString("settingsKeepAnchoredBase"))
+                .WithGreedyState(true)
+                .Build();
+            keepAnchoredBaseCheckbox.transform.SetParent(rootGo.transform, false);
+
+            BuildHint(rootGo.transform, "settingsKeepAnchoredBaseHint", EvaCMGroundPalette.AnchorHintHeight);
 
             return rootGo
                 .AddComponent<ContentController>()
                 .WithViewModel(_viewModel)
-                .WithControls(logLevelCombo, groundOffsetSlider, groundOffsetValue);
+                .WithControls(logLevelCombo, groundOffsetSlider, groundOffsetValue, keepAnchoredBaseCheckbox);
         }
 
         // ----------------------------------------------------------------
@@ -116,8 +127,11 @@ namespace com.github.lhervier.ksp.evacmgroundmod.ui.ugui
                 .Build();
         }
 
-        /// <summary>Builds an explanatory sentence, wrapped to the window width.</summary>
-        private static void BuildHint(Transform parent, string key)
+        /// <summary>
+        /// Builds an explanatory sentence, wrapped to the window width, reserving <paramref name="height"/>
+        /// pixels for it.
+        /// </summary>
+        private static void BuildHint(Transform parent, string key, float height)
         {
             var go = new GameObject("Hint", typeof(RectTransform));
             go.transform.SetParent(parent, false);
@@ -125,7 +139,7 @@ namespace com.github.lhervier.ksp.evacmgroundmod.ui.ugui
             // text before the group has given it its width, so a wrapped paragraph would settle on the
             // wrong number of lines. The reserved height is what the sentence needs at this size.
             var le = go.AddComponent<LayoutElement>();
-            le.minHeight = le.preferredHeight = EvaCMGroundPalette.HintHeight;
+            le.minHeight = le.preferredHeight = height;
             var label = UGUILabels.AddLabel(go);
             label.text = ModLocalization.GetString(key);
             label.fontSize = EvaCMGroundPalette.HintFontSize;

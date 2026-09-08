@@ -81,6 +81,25 @@ would touch the ground it is put back where it last was.
 - The last valid position and rotation of the part are kept, and restored whenever an invalid
   placement is detected.
 
+## Second fix: anchored bases that rise at every load
+
+Optional, and off by default. It addresses a different KSP bug, the one behind step 5 above in
+stock: a landed base built on a ground anchor is put back down on the terrain **every time it
+loads**, which pulls the anchor's spikes out of the ground, welds them at that new height, and so
+raises the base a little more at each cycle.
+
+`Vessel.GoOffRails` only spares a landed vessel whose stored PQS subdivision levels match the live
+terrain controller. A part dropped in EVA Construction Mode is created with those levels set to
+zero, so the vessel it becomes never passes that test, and `CheckGroundCollision` re-grounds it at
+every load — with the 10 cm dead zone that would normally absorb the correction explicitly disabled
+for a vessel whose root part is a ground part. `KSP.log` shows it as
+`ground contact! - error. Moving Vessel up 0.001m`.
+
+The fix writes the levels the vessel should have had, so KSP takes its normal "nothing to do here"
+path. It only ever touches a landed vessel that carries a deployed ground anchor **and** was saved
+with uninitialized levels; a base whose levels are merely out of date (the terrain detail setting
+really did change) is left to KSP, and a freshly dropped anchor still gets its initial seating.
+
 ## Settings
 
 The mod adds a button to the application launcher (in flight and at the space center) that opens a
@@ -90,9 +109,12 @@ small settings window:
 - **Ground offset** - how close to the ground a part may come before the placement is refused
   (0.010 m by default). Raise it if parts still end up buried, lower it if they refuse to sit on the
   surface.
+- **Keep anchored bases in place** - the second fix above (off by default). Takes effect at the next
+  load, since a vessel already in the scene has been positioned already.
 
-Both are settings of the *installation*, not of a save: they are stored in
-`GameData/EvaCMGroundMod/PluginData/settings.cfg` and applied as soon as they are changed.
+They are settings of the *installation*, not of a save: they are stored in
+`GameData/EvaCMGroundMod/PluginData/settings.cfg` and applied as soon as they are changed. Deleting
+that file restores the defaults, which leaves the second fix off.
 
 ## Installation
 
