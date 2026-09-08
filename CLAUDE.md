@@ -130,8 +130,10 @@ ailleurs, et c'est justement le cas de celui-là.
 
 Depuis la troncature, le paramètre n'est plus un biais sur un test booléen : il est **retranché du
 contact exact**, donc la pièce s'immobilise précisément à cette hauteur du sol. À 0 elle se pose au
-contact franc — mais une marge strictement positive reste utile, c'est elle qui garantit que la pose
-enregistrée est franchement non chevauchante malgré les arrondis. Défaut : 1 cm, plafond 10 cm.
+contact franc — une marge strictement positive garantit en revanche que la pose enregistrée est
+franchement non chevauchante malgré les arrondis. **Défaut : 0 depuis le 2026-09-08** (il était de
+1 cm) ; plafond 10 cm, curseur toujours en place. Lionel veut jouer sans marge et jugera sur pièce
+s'il faut la rétablir.
 
 ## Reproduire et valider
 

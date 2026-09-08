@@ -26,8 +26,11 @@ namespace com.github.lhervier.ksp.evacmgroundmod.settings
         /// <summary>Largest ground offset the UI offers (m).</summary>
         public const float GroundOffsetMax = 0.1f;
 
-        /// <summary>Default ground offset (m), i.e. the value the mod shipped with.</summary>
-        public const float GroundOffsetDefault = 0.01f;
+        /// <summary>
+        /// Default ground offset (m): none. A part stops at the exact contact point, and the player who
+        /// wants a margin raises the slider.
+        /// </summary>
+        public const float GroundOffsetDefault = 0f;
 
         /// <summary>
         /// Default for <see cref="KeepAnchoredBaseGroundPosition"/>: on, like the placement fix. The bug

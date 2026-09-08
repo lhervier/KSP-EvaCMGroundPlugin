@@ -88,8 +88,8 @@ requested move: the part travels up to the real ground contact, minus the config
   (`OverlapBox` / `OverlapCapsule` / `OverlapSphere`, then `ComputePenetration` to discard the
   overlaps that are not real penetrations).
 - Box, capsule, sphere and mesh colliders are all supported.
-- The test volume is dropped by the configured *ground offset*, so a part is refused slightly before
-  it actually reaches the surface.
+- The configured *ground offset* is subtracted from that contact, so a part stops short of the
+  surface by exactly that distance. It is 0 by default: the part stops at the contact itself.
 - The move is truncated rather than refused, so a part always ends up in contact with the ground
   instead of anywhere above it.
 
@@ -161,8 +161,8 @@ The mod adds a button to the application launcher (in flight and at the space ce
 small settings window:
 
 - **Log level** - how much the mod writes to `KSP.log`.
-- **Ground offset** - how close to the ground a part may come before the placement is refused
-  (0.010 m by default). Raise it if parts still end up buried, lower it if they refuse to sit on the
+- **Ground offset** - how far above the ground contact a part is stopped (0 by default, up to
+  0.100 m). Raise it if parts still end up buried, leave it at 0 for parts to sit right on the
   surface.
 - **Keep anchored bases in place** - fix 2 above, on by default. Takes effect at the next load, since
   a vessel already in the scene has been positioned already.
