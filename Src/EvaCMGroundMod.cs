@@ -672,8 +672,12 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
                 }
             }
 
-            LOGGER.LogDebug($"Ground reached {free:F3} m away, stopping {GroundOffset:F3} m short of it");
-            return fromPosition + direction * Mathf.Max(0f, free - GroundOffset);
+            // The guard is not taken off here: every pose was tested on a volume already lowered by
+            // GroundOffset (GetGroundOffsetVector), so free is the furthest pose whose colliders stand
+            // that much clear of the ground. Subtracting it once more would apply it twice, and along
+            // the move instead of along the local vertical it was measured on.
+            LOGGER.LogDebug($"Stopping {free:F3} m away, {GroundOffset:F3} m clear of the ground");
+            return fromPosition + direction * free;
         }
 
         /// <summary>

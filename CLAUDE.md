@@ -126,14 +126,26 @@ Depuis, les deux côtés appliquent la même règle, et le cas particulier `rang
 ⚠️ Le `LAYER_MASK` ne suffit pas : il exclut le calque « Part Triggers », mais un trigger peut vivre
 ailleurs, et c'est justement le cas de celui-là.
 
-## La garde au sol est une vraie distance
+## La garde au sol est une vraie distance — appliquée **une seule fois**, verticalement
 
-Depuis la troncature, le paramètre n'est plus un biais sur un test booléen : il est **retranché du
-contact exact**, donc la pièce s'immobilise précisément à cette hauteur du sol. À 0 elle se pose au
-contact franc — une marge strictement positive garantit en revanche que la pose enregistrée est
-franchement non chevauchante malgré les arrondis. **Défaut : 0 depuis le 2026-09-08** (il était de
-1 cm) ; plafond 10 cm, curseur toujours en place. Lionel veut jouer sans marge et jugera sur pièce
-s'il faut la rétablir.
+Depuis la troncature, le paramètre n'est plus un biais sur un test booléen : la pièce s'immobilise
+précisément à cette hauteur du sol. À 0 elle se pose au contact franc — une marge strictement
+positive garantit en revanche que la pose enregistrée est franchement non chevauchante malgré les
+arrondis. **Défaut : 0 depuis le 2026-09-08** (il était de 1 cm) ; plafond 10 cm, curseur toujours
+en place. Lionel veut jouer sans marge et jugera sur pièce s'il faut la rétablir.
+
+⚠️ **Elle s'applique en un seul endroit : `GetGroundOffsetVector`**, qui descend le volume de test le
+long de la verticale locale (`-up`) avant chaque `Physics.Overlap*` et chaque `ComputePenetration`.
+La dichotomie rend donc déjà une pose dégagée de cette hauteur, et `GetReachablePosition` **ne la
+retranche plus** de la distance parcourue. Corrigé le 2026-09-08 : elle l'était, ce qui la comptait
+**deux fois** — une fois à la verticale, une fois le long du déplacement — pour une garde effective
+entre 1× et 2× le réglage selon l'angle. Sans conséquence observable au défaut actuel (0), mais
+mortel dès que le curseur bouge. Ce correctif clôt du même coup l'ancien « chantier ouvert » sur
+l'axe : la garde est désormais **verticale**, comme son nom le dit.
+
+Reste vrai, et volontaire : le `+ GroundOffset` du `backoff` de `GetCastDistance` n'a rien à voir. Il
+recule l'origine du cast et se retranche du résultat, donc il s'annule ; il ne fait qu'offrir de la
+place au cast pour démarrer.
 
 ## Reproduire et valider
 
@@ -164,9 +176,3 @@ distingue pas les deux cas ; le croiser avec la couverture mesurée du collider.
   toujours. Piste esquissée, non implémentée — voir
   [CLAUDE-detection-sol.md](CLAUDE-detection-sol.md). Noter que ce n'est **pas** ce qui faisait
   monter les bases, contrairement à ce qu'on a cru un moment.
-- **La garde au sol est retranchée le long du déplacement**, pas verticalement — alors que le
-  comportement d'origine décalait le volume de test vers le bas (`GetGroundOffsetVector`). Un
-  ajustement final presque horizontal donne donc une garde verticale quasi nulle. Ça n'a pas eu de
-  conséquence mesurable (la marge à 10 cm ne change rien au symptôme qu'on lui imputait, cf.
-  [CLAUDE-rechargement.md](CLAUDE-rechargement.md)), mais l'écart entre le nom du paramètre et ce
-  qu'il fait reste à trancher.
