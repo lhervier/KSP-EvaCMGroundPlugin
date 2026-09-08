@@ -25,7 +25,7 @@ ne sait pas l'exprimer, alors qu'un collider éloigné de l'origine parcourt un 
 surface comme une translation. Son parcours est borné par l'angle, donc `MAX_SWEEP_STEPS` n'y est
 plus un trou.
 
-### Les quatre invariants à ne pas casser
+### Les cinq invariants à ne pas casser
 
 - **Le pas de sondage se déduit de la fenêtre, jamais d'une dimension de collider.** L'épaisseur
   d'une pièce ne dit rien de la distance sur laquelle elle chevauche encore le sol. Mesuré sur
@@ -44,6 +44,28 @@ plus un trou.
   longueur de boîte (plus la garde au sol) et retranche autant du résultat. **Ne pas « corriger » en
   filtrant les hits à distance nulle** : c'est ce qu'on avait fait, et ça neutralise la détection
   précisément au contact du sol, là où elle sert.
+- **On ne tronque que depuis une pose de départ dégagée** (ajouté le 2026-09-08). Les deux étages
+  mesurent un déplacement *depuis* une pose qu'ils supposent hors du sol — la dichotomie encadre le
+  point d'arrêt entre le départ et la première pose enterrée, le balayage de rotation part de
+  `step = 1`. Une pièce peut pourtant démarrer enterrée : attachée sur un nœud, détail du terrain
+  changé sous elle, pose suivie d'avant un changement de scène. Les deux issues sont mauvaises et
+  aucune n'est rattrapable en aval :
+  - si le cast rapporte le chevauchement initial (c'est le cas, grâce au recul d'origine ci-dessus),
+    `firstTouch = 0`, le premier sondage est dans le sol, `free` reste à 0 : la dichotomie converge
+    sur la pose de départ et la pièce est **figée dans toutes les directions, y compris vers le
+    haut** — impossible de la déterrer ;
+  - s'il ne le rapporte pas, « rien sur le trajet » et **tout le déplacement est accordé, dans le
+    sol**.
+
+  D'où le test préalable dans `OnEditorPartEvent` (`IsPoseInGroundAt` sur
+  `previousPosition`/`previousRotation`) : départ enterré → **déplacement accordé entier**, la pièce
+  reste manipulable, et la troncature reprend dès que la pose sur laquelle elle est lâchée est
+  dégagée. Ne pas remplacer ce court-circuit par une troncature « intelligente » (n'autoriser que ce
+  qui sort du sol) : le mod ne sait pas où est la sortie, et le joueur, si.
+
+  ⚠️ Ce test hérite de l'angle mort des colliders concaves ci-dessous : une pièce entièrement sous la
+  peau du terrain n'est vue enterrée par personne, ni par ce test ni par la détection. Il couvre le
+  cas qui figeait la pièce, pas celui qu'on ne sait pas détecter.
 
 ## Angles morts connus
 

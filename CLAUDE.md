@@ -20,7 +20,7 @@ mod dépend entièrement :
 Le détail des enquêtes est sorti d'ici pour ne pas alourdir la lecture courante :
 
 - **[CLAUDE-detection-sol.md](CLAUDE-detection-sol.md)** — comment le mod décide qu'une pièce est
-  dans le sol : les trois étages (cast, sondages, dichotomie), les quatre invariants à ne pas casser,
+  dans le sol : les trois étages (cast, sondages, dichotomie), les cinq invariants à ne pas casser,
   l'angle mort des colliders concaves, les impasses à ne pas refaire (`Rigidbody.SweepTest`,
   `lossyScale`), les pièces de test et la méthode de lecture des logs. **À lire avant de toucher à
   `GetReachablePosition`, `GetCastDistance`, `IsPoseInGround` ou au balayage.**

@@ -542,8 +542,27 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
         }
 
         /// <summary>
+        /// Whether <paramref name="part"/> is in the ground in the given pose. It is left in that pose,
+        /// the physics scene included.
+        /// </summary>
+        private bool IsPoseInGroundAt(
+            Part part,
+            Collider[] colliders,
+            Vector3 position,
+            Quaternion rotation
+        ) {
+            part.transform.position = position;
+            part.transform.rotation = rotation;
+            // The tests read the physics scene, which does not necessarily follow a transform written from
+            // a script.
+            Physics.SyncTransforms();
+            return IsPoseInGround(part, colliders);
+        }
+
+        /// <summary>
         /// Whether <paramref name="part"/> is in the ground once moved <paramref name="travel"/> meters
-        /// along <paramref name="direction"/> from <paramref name="fromPosition"/>.
+        /// along <paramref name="direction"/> from <paramref name="fromPosition"/>. Its rotation is left
+        /// untouched.
         /// </summary>
         private bool IsInGroundAt(
             Part part,
@@ -552,17 +571,22 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
             Vector3 direction,
             float travel
         ) {
-            part.transform.position = fromPosition + direction * travel;
-            // The tests read the physics scene, which does not necessarily follow a transform written from
-            // a script.
-            Physics.SyncTransforms();
-            return IsPoseInGround(part, colliders);
+            return IsPoseInGroundAt(
+                part,
+                colliders,
+                fromPosition + direction * travel,
+                part.transform.rotation
+            );
         }
 
         /// <summary>
         /// Where <paramref name="part"/> ends up when moved from <paramref name="fromPosition"/> toward
         /// <paramref name="toPosition"/>: the target itself when the way is clear, otherwise the furthest
         /// point along the way that still keeps its colliders <see cref="GroundOffset"/> clear of the ground.
+        ///
+        /// <paramref name="fromPosition"/> has to be a pose that is out of the ground: the answer is
+        /// bracketed between it and the first pose found in the ground, so a start already in the ground
+        /// would be handed back as the only reachable point. The caller rules that case out.
         /// </summary>
         private Vector3 GetReachablePosition(
             Part part,
@@ -741,6 +765,29 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
                 $"[{eventType}] {part.partInfo.name}: {Vector3.Distance(this.previousPosition, targetPosition):F3} m" +
                 $" and {Quaternion.Angle(this.previousRotation, targetRotation):F1} deg asked for"
             );
+
+            // Both stages below measure a move away from a pose they take for clear, and a part can start
+            // from inside the ground all the same: attached on a node, terrain detail changed under it,
+            // pose followed from before a scene change. Held to that start, neither stage has an answer.
+            // The truncation would bracket the stopping point between a start it believes clear and the
+            // first pose found in the ground, that is to say between the start and the start: the part
+            // would be pinned where it stands, in every direction, digging itself out included. The
+            // rotation walk would read its very first pose as a hit and put the part back on the buried
+            // pose it came from. So the move is granted whole and the part stays draggable; whatever pose
+            // it is dropped on becomes the next start, and truncation resumes as soon as that one is clear.
+            if( IsPoseInGroundAt(part, colliders, this.previousPosition, this.previousRotation) ) {
+                LOGGER.LogDebug($"Starting pose is already in the ground, the move is granted whole");
+                this.previousPosition = targetPosition;
+                this.previousRotation = targetRotation;
+                part.transform.position = targetPosition;
+                part.transform.rotation = targetRotation;
+                Physics.SyncTransforms();
+                return;
+            }
+            // The test above left the part on the starting pose. What follows measures the translation on
+            // the rotation the move asks for, the one KSP had written before the event, so it is put back.
+            part.transform.position = targetPosition;
+            part.transform.rotation = targetRotation;
 
             targetPosition = GetReachablePosition(part, colliders, this.previousPosition, targetPosition);
             part.transform.position = targetPosition;
