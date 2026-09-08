@@ -1,8 +1,9 @@
 # KSP-EvaCMGroundPlugin — notes de développement
 
 Ce fichier ne contient que ce qui est **propre à ce mod**. Tout ce qui vaut pour le développement de
-mods KSP en général est dans le `CLAUDE.md` du dossier parent (`kspmod\`) — en particulier, et parce
-que ce mod repose entièrement dessus :
+mods KSP en général est dans le `CLAUDE.md` du dossier parent (`kspmod\`) et ses fichiers de contexte
+— ici, presque tout vient de [`../CLAUDE-terrain-physique.md`](../CLAUDE-terrain-physique.md), dont ce
+mod dépend entièrement :
 
 - **le sol et les bâtiments sont des peaux sans épaisseur**, donc `ComputePenetration` ne détecte que
   pendant le chevauchement, et un test sur une seule pose peut être enjambé ;
@@ -11,7 +12,8 @@ que ce mod repose entièrement dessus :
 - **construction EVA** : la limite de portage est un poids, et l'écart entre la pose demandée et la
   pose accordée grandit tant que le joueur maintient le glissement ;
 - **le collider d'une pièce ne couvre pas forcément sa forme** ;
-- **lire un `.mu` depuis un script** pour vérifier tout ça sans lancer le jeu.
+- **lire un `.mu` depuis un script** pour vérifier tout ça sans lancer le jeu
+  ([`../CLAUDE-modelisation-mu.md`](../CLAUDE-modelisation-mu.md)).
 
 ## Fichiers de contexte — à ouvrir au besoin, pas par défaut
 
