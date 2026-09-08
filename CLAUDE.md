@@ -8,15 +8,36 @@ que ce mod repose entièrement dessus :
   pendant le chevauchement, et un test sur une seule pose peut être enjambé ;
 - **`Physics.Overlap*` et `Physics.ComputePenetration` n'attendent pas le même point** ;
 - **`Physics.autoSyncTransforms` est désactivé** dans KSP ;
-- **construction EVA** : le gizmo ne recule jamais, et la limite de portage est un poids ;
+- **construction EVA** : la limite de portage est un poids, et l'écart entre la pose demandée et la
+  pose accordée grandit tant que le joueur maintient le glissement ;
 - **le collider d'une pièce ne couvre pas forcément sa forme** ;
 - **lire un `.mu` depuis un script** pour vérifier tout ça sans lancer le jeu.
 
+## Fichiers de contexte — à ouvrir au besoin, pas par défaut
+
+Le détail des enquêtes est sorti d'ici pour ne pas alourdir la lecture courante :
+
+- **[CLAUDE-detection-sol.md](CLAUDE-detection-sol.md)** — comment le mod décide qu'une pièce est
+  dans le sol : les trois étages (cast, sondages, dichotomie), les quatre invariants à ne pas casser,
+  l'angle mort des colliders concaves, les impasses à ne pas refaire (`Rigidbody.SweepTest`,
+  `lossyScale`), les pièces de test et la méthode de lecture des logs. **À lire avant de toucher à
+  `GetReachablePosition`, `GetCastDistance`, `IsPoseInGround` ou au balayage.**
+- **[CLAUDE-rechargement.md](CLAUDE-rechargement.md)** — « la base monte quand je recharge » :
+  **ce n'est pas le mod**, c'est la masse de stabilisation de `ModuleCargoPart` qui fausse l'altitude
+  enregistrée quand on sauvegarde trop tôt après avoir posé une pièce. Contournement, et les trois
+  fausses pistes mesurées avant d'y arriver. **À lire dès que quelqu'un impute au mod un
+  déplacement constaté au rechargement.**
+
 ## Ce que fait le mod, en une phrase
 
-Pendant le mode construction EVA, il écoute `GameEvents.onEditorPartEvent`, teste si la pièce tenue
-se retrouve dans le sol, et la repose à sa dernière pose valide (`previousPosition` /
-`previousRotation`) le cas échéant. Tout est dans [`Src/EvaCMGroundMod.cs`](Src/EvaCMGroundMod.cs).
+Pendant le mode construction EVA, il écoute `GameEvents.onEditorPartEvent` et **tronque** le
+déplacement demandé : la pièce avance jusqu'au contact réel du sol, moins la garde au sol réglable.
+Tout est dans [`Src/EvaCMGroundMod.cs`](Src/EvaCMGroundMod.cs).
+
+⚠️ Ce n'était pas le cas avant le 2026-09-03 : le mod **refusait** le déplacement et reposait la
+pièce à sa dernière pose valide. La troncature remplace ce fonctionnement, parce qu'un refus laisse
+la pièce n'importe où au-dessus du sol, et que l'erreur s'accumule sur une base longue — les
+contraintes se paient au démarrage de la physique.
 
 ## Deux variables à ne jamais refusionner
 
@@ -33,29 +54,20 @@ variable `center` servait aux deux rôles, et la phase large cherchait au mauvai
 collider décalé de l'origine de son transform : la pièce se posait dans le sol sans la moindre
 erreur. `GetMeshColliders` avait déjà le bon schéma et sert de modèle.
 
-## Le balayage du trajet, et pourquoi il existe
+## `Collider.bounds` est déjà en espace monde
 
-Corrigé le 2026-09-03. `OnEditorPartEvent` parcourt le trajet **pose par pose** depuis la dernière
-pose valide, au lieu de ne tester que l'arrivée.
+Corrigé le 2026-09-03. `GetMeshColliders` bâtit son volume de recherche sur `meshCollider.bounds` :
+ses extents sont **déjà** en unités monde (pas de `lossyScale` à appliquer) et ses axes sont **déjà**
+ceux du monde, d'où `Quaternion.identity` en rotation. Remultiplier par `lossyScale` gonflait la
+boîte (×20 sur certaines pièces, ×0,5 sur d'autres) et lui appliquer `transform.rotation` permutait
+ses dimensions entre axes. Détail et mesures dans [CLAUDE-detection-sol.md](CLAUDE-detection-sol.md).
 
-Sans ça : le gizmo de l'éditeur ne recule pas quand le mod repose la pièce, l'écart entre les deux
-grandit tant que le joueur glisse, et un événement finit par déplacer la pièce de plus que
-l'épaisseur de son collider — qui passe d'« au-dessus » du terrain à « en dessous » sans jamais être
-« dedans ». Symptôme en jeu : *ça bloque, puis si j'insiste, ça passe*, et une fois passée la pièce
-est verrouillée sous terre puisque `previousPosition` enregistre la pose acceptée.
+## La garde au sol est une vraie distance
 
-- `GetSweepStepCount` — le pas vaut la moitié du collider le plus mince (`GetSmallestThickness`),
-  pour qu'au moins une pose intermédiaire tombe *dans* toute surface traversée. Plafond
-  `MAX_SWEEP_STEPS = 32`.
-- **La rotation fait partie du trajet** : un collider éloigné de l'origine parcourt un arc, qui
-  enjambe une surface exactement comme une translation. Le nombre de pas intègre `angle × rayon`, et
-  les poses intermédiaires interpolent aussi la rotation (`Quaternion.Slerp`) — sinon les poses
-  testées ne seraient pas sur le trajet réel.
-- `Physics.SyncTransforms()` avant chaque test de pose, et une fois après la décision.
-- Sortie anticipée dès qu'une pose est dans le sol : le cas coûteux (32 pas complets) ne survient
-  qu'en vol libre, loin du sol — c'est là qu'un éventuel à-coup se verrait.
-
-Quand la pièce bouge peu entre deux événements, `steps` vaut 1 et le comportement est celui d'avant.
+Depuis la troncature, le paramètre n'est plus un biais sur un test booléen : il est **retranché du
+contact exact**, donc la pièce s'immobilise précisément à cette hauteur du sol. À 0 elle se pose au
+contact franc — mais une marge strictement positive reste utile, c'est elle qui garantit que la pose
+enregistrée est franchement non chevauchante malgré les arrondis. Défaut : 1 cm, plafond 10 cm.
 
 ## Reproduire et valider
 
@@ -66,35 +78,29 @@ d'école, pour trois raisons cumulées :
   `foreach (Collider collider in colliders)` ;
 - volumes **totalement disjoints** (décalage 0,4455 m contre 0,101 m de demi-épaisseur, 0,243 m de
   trou entre les deux) : jamais détecté, à aucune profondeur ;
-- `mass = 0.05 t` → 490 N, sous la limite de 588,4 N : portable par un ingénieur seul **sur Kerbin**,
-  pas besoin d'aller sur la Mun. `packedVolume = 750` L en revanche, trop gros pour l'inventaire
-  personnel d'un kerbal : le saisir sur le vaisseau, ou le sortir d'un conteneur (MK3 Cargo Storage
-  Unit, Hitchhiker).
+- `mass = 0.05 t` → 490 N, sous la limite de 588,4 N : portable par un ingénieur seul **sur Kerbin**.
+  `packedVolume = 750` L en revanche, trop gros pour l'inventaire personnel : le saisir sur le
+  vaisseau, ou le sortir d'un conteneur.
 
-**Protocole** : ingénieur en EVA, mode construction, saisir le TT-70, l'orienter bras vers le bas et
-l'enfoncer. ⚠️ **Garder l'origine de la pièce au-dessus du terrain** (la boule du gizmo) : si elle
-passe sous le sol, le pré-test d'altitude déclenche le retour arrière **avant** d'arriver aux
-colliders, et une version cassée se comporte comme une version corrigée.
-
-⚠️ **Mauvaise pièce pour valider le balayage, en revanche** : c'est la même propriété — un collider
-unique, loin de tout le reste — qui expose si bien le bug `center` et qui rend le TT-70 trompeur
-ensuite. Jusqu'à 0,58 m de son treillis n'a aucun collider (mesures dans le `CLAUDE.md` parent), donc
-il s'enfonce visuellement de façon parfaitement normale. Pour valider le balayage, prendre une pièce
-dont le collider épouse la forme : `winglet`, `FuelCell`, `adapterSmallMiniTall`.
+⚠️ **Mauvaise pièce pour valider la troncature**, en revanche : jusqu'à 0,58 m de son treillis n'a
+aucun collider, donc il s'enfonce visuellement de façon parfaitement normale. Pour ça, prendre
+l'**Oscar-B vidé de ses ergols** — les critères et le protocole sont dans
+[CLAUDE-detection-sol.md](CLAUDE-detection-sol.md).
 
 **Piège de méthode** : sauvegarder/recharger la partie prouve que le collider ne **traverse** pas le
 terrain — un collider entièrement sous la peau ne serait pas éjecté non plus. Le test seul ne
 distingue pas les deux cas ; le croiser avec la couverture mesurée du collider.
 
-## Piste laissée ouverte
+## Chantiers ouverts
 
-Le pré-test d'altitude de `IsPoseInGround` porte toujours sur `part.transform.position` **seul** — un
-point unique, qui pour une pièce comme le TT-70 est à 0,41–0,62 m de son unique collider. C'est le
-même défaut point-pour-volume que celui corrigé sur `collider.center`, un étage plus haut.
-
-L'étendre au centre des colliders a été **délibérément écarté** le 2026-09-03 : il repose sur
-`TerrainAltitude`, c'est-à-dire le champ de hauteur PQS, aveugle aux bâtiments et aux statiques. Un
-bâtiment Kerbal Konstructs posé **enfoncé** dans le terrain a son plancher sous l'altitude PQS ; une
-pièce posée dessus serait renvoyée en arrière, rendant la construction **impossible à cet endroit**.
-Le balayage couvre le même besoin sans ce faux positif, et le pré-test ne sert plus que de garde-fou
-grossier.
+- **Les colliders concaves échappent au prédicat** (7 pièces stock transportables, dont le point
+  d'ancrage) : `ComputePenetration` ne rend rien entre deux maillages concaves, et le terrain l'est
+  toujours. Piste esquissée, non implémentée — voir
+  [CLAUDE-detection-sol.md](CLAUDE-detection-sol.md). Noter que ce n'est **pas** ce qui faisait
+  monter les bases, contrairement à ce qu'on a cru un moment.
+- **La garde au sol est retranchée le long du déplacement**, pas verticalement — alors que le
+  comportement d'origine décalait le volume de test vers le bas (`GetGroundOffsetVector`). Un
+  ajustement final presque horizontal donne donc une garde verticale quasi nulle. Ça n'a pas eu de
+  conséquence mesurable (la marge à 10 cm ne change rien au symptôme qu'on lui imputait, cf.
+  [CLAUDE-rechargement.md](CLAUDE-rechargement.md)), mais l'écart entre le nom du paramètre et ce
+  qu'il fait reste à trancher.

@@ -74,6 +74,16 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
         /// </summary>
         private const int MAX_SWEEP_STEPS = 32;
 
+        /// <summary>
+        /// Shortest move worth sweeping, in meters.
+        /// </summary>
+        private const float MIN_SWEEP_DISTANCE = 1e-4f;
+
+        /// <summary>
+        /// How many times the search for the ground is halved once it has been bracketed.
+        /// </summary>
+        private const int BISECTION_STEPS = 12;
+
         private Part previousPart;
         private Vector3 previousPosition;
         private Quaternion previousRotation;
@@ -190,7 +200,7 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
                 }
             }
         }
-        
+
         bool IsCollidingWithGround(Collider collider) {
             Collider[] colliders;
             if (collider is BoxCollider boxCollider) {
@@ -323,21 +333,17 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
         }
 
         Collider[] GetMeshColliders(MeshCollider meshCollider) {
-            // Getting all the colliders in the zone
-            Vector3 scale = GetScale(meshCollider);
-            Vector3 scaledExtents = Vector3.Scale(
-                meshCollider.bounds.extents,
-                scale
-            );
-
             // The broad phase is centered on the bounds and the penetration test on the transform, so the
             // drop is applied to both rather than to a single shared center.
             Vector3 offset = GetGroundOffsetVector(meshCollider.transform.position);
 
+            // Collider.bounds is already a world space, axis aligned bounding box : its extents are world
+            // units (no lossyScale to apply) and its axes are the world ones. Hence the identity rotation :
+            // rotating that box with the transform would describe a volume the collider does not occupy.
             Collider[] potentialColliders = Physics.OverlapBox(
                 meshCollider.bounds.center + offset,
-                scaledExtents,
-                meshCollider.transform.rotation,
+                meshCollider.bounds.extents,
+                Quaternion.identity,
                 LAYER_MASK
             );
 
@@ -420,21 +426,231 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
         }
 
         /// <summary>
+        /// How far <paramref name="collider"/> can travel along <paramref name="direction"/>, from the pose
+        /// the physics scene currently holds, before it reaches the ground. Capped at
+        /// <paramref name="distance"/>, which is also what comes back when nothing stands in the way.
+        /// </summary>
+        private float GetCastDistance(Collider collider, Vector3 direction, float distance) {
+            Vector3 scale = GetScale(collider);
+
+            // A cast reports whatever its shape already overlaps as a hit at distance zero, and tells
+            // nothing of what lies further on. Starting it a shape's length behind gives it clear room to
+            // begin in, and the same length is taken off the answer.
+            float backoff = GetProjectedExtent(collider.bounds, direction) + GroundOffset;
+            Vector3 origin = -direction * backoff;
+            float castDistance = distance + backoff;
+
+            RaycastHit[] hits;
+            if (collider is BoxCollider boxCollider) {
+                hits = Physics.BoxCastAll(
+                    boxCollider.transform.TransformPoint(boxCollider.center) + origin,
+                    Vector3.Scale(boxCollider.size, scale) * 0.5f,
+                    direction,
+                    boxCollider.transform.rotation,
+                    castDistance,
+                    LAYER_MASK,
+                    QueryTriggerInteraction.Ignore
+                );
+            }
+            else if (collider is SphereCollider sphereCollider) {
+                hits = Physics.SphereCastAll(
+                    sphereCollider.transform.TransformPoint(sphereCollider.center) + origin,
+                    sphereCollider.radius * Mathf.Max(scale.x, Mathf.Max(scale.y, scale.z)),
+                    direction,
+                    castDistance,
+                    LAYER_MASK,
+                    QueryTriggerInteraction.Ignore
+                );
+            }
+            else if (collider is CapsuleCollider capsuleCollider) {
+                float radiusScale;
+                float heightScale;
+                switch (capsuleCollider.direction) {
+                    case 0:     // X-axis
+                        radiusScale = Mathf.Max(scale.y, scale.z);
+                        heightScale = scale.x;
+                        break;
+                    case 1:     // Y-axis
+                        radiusScale = Mathf.Max(scale.x, scale.z);
+                        heightScale = scale.y;
+                        break;
+                    default:    // Z-axis
+                        radiusScale = Mathf.Max(scale.x, scale.y);
+                        heightScale = scale.z;
+                        break;
+                }
+                float scaledRadius = capsuleCollider.radius * radiusScale;
+                float height = (capsuleCollider.height * heightScale) - (2 * scaledRadius);
+                Quaternion rotation = capsuleCollider.transform.rotation;
+                Vector3 directionVector;
+                switch (capsuleCollider.direction) {
+                    case 0:     // X-axis
+                        directionVector = rotation * Vector3.right;
+                        break;
+                    case 2:     // Z-axis
+                        directionVector = rotation * Vector3.forward;
+                        break;
+                    default:    // Y-axis
+                        directionVector = rotation * Vector3.up;
+                        break;
+                }
+                Vector3 worldCenter = capsuleCollider.transform.TransformPoint(capsuleCollider.center) + origin;
+                hits = Physics.CapsuleCastAll(
+                    worldCenter - directionVector * (height * 0.5f),
+                    worldCenter + directionVector * (height * 0.5f),
+                    scaledRadius,
+                    direction,
+                    castDistance,
+                    LAYER_MASK,
+                    QueryTriggerInteraction.Ignore
+                );
+            }
+            else {
+                // Unity sweeps boxes, spheres and capsules, never an arbitrary mesh. The collider's world
+                // bounding box stands in for it. Reporting contact early is harmless: this only says that
+                // something is on the way, the stopping point is settled afterwards on the real shape.
+                Bounds bounds = collider.bounds;
+                hits = Physics.BoxCastAll(
+                    bounds.center + origin,
+                    bounds.extents,
+                    direction,
+                    Quaternion.identity,
+                    castDistance,
+                    LAYER_MASK,
+                    QueryTriggerInteraction.Ignore
+                );
+            }
+
+            float reachable = distance;
+            foreach (RaycastHit hit in hits) {
+                // Colliders for analyse arms are not considered as colliding
+                if (hit.collider.name == "rangeTrigger" && hit.collider.gameObject.layer == 15) {     // Local Scenery
+                    continue;
+                }
+                reachable = Mathf.Min(reachable, Mathf.Max(0f, hit.distance - backoff));
+            }
+            return reachable;
+        }
+
+        /// <summary>
+        /// How far the world bounding box of <paramref name="bounds"/> reaches along
+        /// <paramref name="direction"/>, from its centre.
+        /// </summary>
+        private static float GetProjectedExtent(Bounds bounds, Vector3 direction) {
+            Vector3 extents = bounds.extents;
+            return Mathf.Abs(direction.x) * extents.x
+                 + Mathf.Abs(direction.y) * extents.y
+                 + Mathf.Abs(direction.z) * extents.z;
+        }
+
+        /// <summary>
+        /// Whether <paramref name="part"/> is in the ground once moved <paramref name="travel"/> meters
+        /// along <paramref name="direction"/> from <paramref name="fromPosition"/>.
+        /// </summary>
+        private bool IsInGroundAt(
+            Part part,
+            Collider[] colliders,
+            Vector3 fromPosition,
+            Vector3 direction,
+            float travel
+        ) {
+            part.transform.position = fromPosition + direction * travel;
+            // The tests read the physics scene, which does not necessarily follow a transform written from
+            // a script.
+            Physics.SyncTransforms();
+            return IsPoseInGround(part, colliders);
+        }
+
+        /// <summary>
+        /// Where <paramref name="part"/> ends up when moved from <paramref name="fromPosition"/> toward
+        /// <paramref name="toPosition"/>: the target itself when the way is clear, otherwise the furthest
+        /// point along the way that still keeps its colliders <see cref="GroundOffset"/> clear of the ground.
+        /// </summary>
+        private Vector3 GetReachablePosition(
+            Part part,
+            Collider[] colliders,
+            Vector3 fromPosition,
+            Vector3 toPosition
+        ) {
+            Vector3 move = toPosition - fromPosition;
+            float distance = move.magnitude;
+            if (distance < MIN_SWEEP_DISTANCE) {
+                return toPosition;
+            }
+            Vector3 direction = move / distance;
+
+            part.transform.position = fromPosition;
+            Physics.SyncTransforms();
+
+            // A cast only has to answer whether anything stands on the way, not where the part stops: for a
+            // mesh it sweeps a bounding box, so it reports contact somewhat early, and that is harmless
+            // here. What it buys is the common case, an open move settled in one query.
+            float firstTouch = distance;
+            float window = 0f;
+            foreach (Collider collider in colliders) {
+                firstTouch = Mathf.Min(firstTouch, GetCastDistance(collider, direction, distance));
+                window = Mathf.Max(window, 2f * GetProjectedExtent(collider.bounds, direction));
+            }
+            if (firstTouch >= distance) {
+                LOGGER.LogDebug("Nothing on the way, the move is granted whole");
+                return toPosition;
+            }
+
+            // Where the colliders themselves touch is found on ComputePenetration, which knows their real
+            // shape. It is looked for from the box's contact onwards, over a window of twice the box: the
+            // real contact cannot be further than the box is wide, and neither can the stretch over which
+            // the part is still crossing the surface. That window is a property of the part, not of how far
+            // the player dragged, so the search stays bounded however long the move is.
+            // Once something has been found on the way, the move is granted at most one window at a time.
+            // The window is what the geometry lets us vouch for: the colliders cannot touch further than
+            // their own box from where its own contact was reported, nor stay in contact for longer than
+            // that again. Past it nothing has been looked at -- another slope, another building -- so the
+            // rest of the move is left for the next event rather than granted on faith.
+            float searchEnd = Mathf.Min(distance, firstTouch + window);
+            // The resolution is a fraction of the window, not of any collider dimension. How thick a part
+            // is says nothing about how far it travels while it still overlaps the ground: measured on the
+            // Oscar-B, a collider 0.35 m tall crosses in under 0.19 m, and a step drawn from its bounding
+            // box (0.31 m) stepped clean over it.
+            float step = Mathf.Max(MIN_SWEEP_DISTANCE, window / MAX_SWEEP_STEPS);
+
+            // The probes are spread over the window rather than counted off from its start, so that the far
+            // end is always one of them. Stepping from the start would let a move shorter than one step be
+            // judged on its starting pose alone, which is known to be clear anyway.
+            int probes = Mathf.Clamp(Mathf.CeilToInt((searchEnd - firstTouch) / step), 1, MAX_SWEEP_STEPS);
+            float free = 0f;
+            float blocked = -1f;
+            for (int probe = 0; probe <= probes; probe++) {
+                float travel = Mathf.Lerp(firstTouch, searchEnd, (float)probe / probes);
+                if (IsInGroundAt(part, colliders, fromPosition, direction, travel)) {
+                    blocked = travel;
+                    break;
+                }
+                free = travel;
+            }
+            if (blocked < 0f) {
+                return fromPosition + direction * searchEnd;
+            }
+
+            // Both bounds are tested for real, so the answer is squeezed between a pose known to be clear
+            // and a pose known to be in the ground: the part can neither be stopped short of the ground nor
+            // slip past it.
+            for (int i = 0; i < BISECTION_STEPS; i++) {
+                float middle = 0.5f * (free + blocked);
+                if (IsInGroundAt(part, colliders, fromPosition, direction, middle)) {
+                    blocked = middle;
+                } else {
+                    free = middle;
+                }
+            }
+
+            LOGGER.LogDebug($"Ground reached {free:F3} m away, stopping {GroundOffset:F3} m short of it");
+            return fromPosition + direction * Mathf.Max(0f, free - GroundOffset);
+        }
+
+        /// <summary>
         /// Whether <paramref name="part"/> is in the ground in the pose it currently holds.
         /// </summary>
         private bool IsPoseInGround(Part part, Collider[] colliders) {
-            // Checking altitude of the part center to see if it's below the ground
-            double partCenterLatitude = FlightGlobals.currentMainBody.GetLatitude(part.transform.position);
-            double partCenterLongitude = FlightGlobals.currentMainBody.GetLongitude(part.transform.position);
-            double partCenterAltitude = FlightGlobals.currentMainBody.GetAltitude(part.transform.position);
-
-            double terrainAltitude = FlightGlobals.currentMainBody.TerrainAltitude(partCenterLatitude, partCenterLongitude, true);
-            double heightAboveTerrain = partCenterAltitude - terrainAltitude;
-
-            if (heightAboveTerrain < 0) {
-                return true;
-            }
-
             foreach (Collider collider in colliders) {
                 if (IsCollidingWithGround(collider)) {
                     return true;
@@ -453,6 +669,10 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
             }
 
             if( part != this.previousPart ) {
+                LOGGER.LogDebug(
+                    $"Now following {part.partInfo.name}, from {part.transform.position.ToString("F3")}"
+                );
+
                 // Seems to stabilize the parts when changing.
                 if( previousPart != null ) {
                     this.previousPart.transform.position = this.previousPosition;
@@ -468,11 +688,23 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
             Vector3 targetPosition = part.transform.position;
             Quaternion targetRotation = part.transform.rotation;
 
-            // The whole move is walked pose by pose, not just tested where it ends. The editor never moves
-            // its gizmo back when this fix puts the part back, so the two drift apart for as long as the
-            // player keeps dragging, and a single event ends up carrying the part a long way. Terrain and
-            // buildings are non convex MeshColliders, that is to say surfaces with no thickness at all: a
-            // collider landing entirely below one penetrates nothing, and would be let through.
+            // The move is cut short at the ground rather than refused. Sweeping the real colliders answers
+            // in a single query whatever the distance, so crossing the ground stops being something the test
+            // has to catch in time and becomes something the part cannot do: however long the player keeps
+            // dragging, the part is only ever put down on the near side of what stands in its way.
+            LOGGER.LogDebug(
+                $"[{eventType}] {part.partInfo.name}: {Vector3.Distance(this.previousPosition, targetPosition):F3} m" +
+                $" and {Quaternion.Angle(this.previousRotation, targetRotation):F1} deg asked for"
+            );
+
+            targetPosition = GetReachablePosition(part, colliders, this.previousPosition, targetPosition);
+            part.transform.position = targetPosition;
+
+            // The rotation is still walked pose by pose: a sweep travels in a straight line and cannot
+            // express it, while a collider away from the part origin travels an arc that steps over a
+            // surface just like a translation does. That travel is bounded by the angle, so it cannot grow
+            // the way a held drag does. Terrain and buildings are non convex MeshColliders, that is to say
+            // surfaces with no thickness at all: a collider landing entirely below one penetrates nothing.
             bool inGround = false;
             int steps = GetSweepStepCount(part, colliders, this.previousPosition, this.previousRotation);
             for (int step = 1; step <= steps; step++) {
@@ -488,6 +720,10 @@ namespace com.github.lhervier.ksp.evacmgroundmod {
                     inGround = true;
                     break;
                 }
+            }
+
+            if (inGround) {
+                LOGGER.LogDebug($"Rotation walked over {steps} pose(s) hits the ground, keeping the previous pose");
             }
 
             if( inGround ) {
