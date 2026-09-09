@@ -70,6 +70,30 @@ Quatre choix à ne pas défaire sans relire le fichier de contexte :
   de la pièce lâchée). Des niveaux simplement périmés veulent dire que le détail du terrain a
   vraiment changé, et là la passe de KSP a une raison d'être.
 
+## Le troisième correctif : le terrain lui-même
+
+Depuis le 2026-09-09, [`Src/terrain/PqsQuadPrecisionFix.cs`](Src/terrain/PqsQuadPrecisionFix.cs)
+corrige, par deux patches Harmony, un défaut de **KSP nu** : le maillage de collision d'un quad PQS est
+posé à une altitude différente à chaque chargement (jusqu'à ±10 cm), parce que KSP le place en `float`
+sur des vecteurs de 600 km, où le pas de quantification vaut 62,5 mm. C'est **la** cause de l'ancre
+tantôt plaquée tantôt enterrée, du tremblement, et des grosses bases qui explosent au premier
+chargement. Mesuré : la dispersion du sol passe de 143 mm à **0,05 mm**.
+
+Toute l'enquête, les chiffres, la formule correcte et les trois pièges qui ont coûté une campagne
+chacun sont dans [`../CLAUDE-collider-pqs.md`](../CLAUDE-collider-pqs.md) — **à lire avant de toucher à
+ce fichier**, en particulier : `PQS.GetWorldPosition` et `GetRelativePosition` sont inutilisables sur le
+corps survolé (765 km d'erreur), et seule la `QuaternionD` `body.rotation` convient sur un vecteur de
+600 km, jamais le `Quaternion` du transform.
+
+**Désactivé par défaut** (`fixPqsQuadPrecision`), contrairement aux deux autres correctifs : il patche
+la génération du terrain pour tout le jeu, et n'a été éprouvé que sur Kerbin en KSP nu. Il a vocation à
+être proposé à KSPCommunityFixes plutôt qu'à rester ici.
+
+[`Src/anchor/GroundLevelProbe.cs`](Src/anchor/GroundLevelProbe.cs) est l'instrument de mesure qui va
+avec : silencieux sauf au niveau de log Trace ou avec la variable d'environnement
+`EVACM_GROUND_PROBE=1`, il compare à chaque chargement la hauteur analytique du terrain et celle du
+maillage de collision, en trois points d'un même quad.
+
 ## Deux variables à ne jamais refusionner
 
 Corrigé le 2026-09-02. `GetBoxColliders`, `GetCapsuleColliders`, `GetSphereColliders` et
