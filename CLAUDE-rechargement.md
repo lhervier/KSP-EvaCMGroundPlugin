@@ -7,6 +7,13 @@ structure a bougé verticalement** — typiquement une ancre dont les clous sort
 **Ce n'est pas le mod.** Établi le 2026-09-03, confirmé et surtout **re-expliqué** le 2026-09-08 :
 c'est un défaut de KSP, reproductible sans toucher au sol.
 
+⚠️ **Le 2026-09-09, la cause profonde a été trouvée, et elle est ailleurs : le maillage de collision du
+terrain n'est pas reproductible d'un chargement à l'autre** (jusqu'à ±10 cm, bug de KSP nu). Tout ce
+que décrit ce fichier reste exact, mais ce n'est que la moitié de l'histoire : c'est parce que le sol
+change de place que la passe de repositionnement ci-dessous donnait un résultat différent à chaque
+fois. Voir [`../CLAUDE-collider-pqs.md`](../CLAUDE-collider-pqs.md), et la section « Ce que devient le
+keeper » en bas de ce fichier.
+
 ⚠️ La cause écrite ici jusqu'au 2026-09-08 (masse gonflée → centre de masse → altitude enregistrée)
 était **fausse**. Elle est réfutée plus bas, code et mesures à l'appui. Le mécanisme réel n'a rien à
 voir avec la masse.
@@ -133,6 +140,45 @@ passe de KSP qui la soulevait.
 sauvegarde d'après porte `PQSMin/PQSMax = 2/10` au lieu de `0/0`. Ce vaisseau-là ne sera donc plus
 jamais recalé, **même option redésactivée**. Une base ne demande qu'un seul chargement protégé pour
 être réparée définitivement.
+
+## Ce que devient le keeper une fois le terrain corrigé (2026-09-09)
+
+Avec le correctif de précision PQS actif, le sol ne bouge plus (dispersion : 0,05 mm au lieu de
+143 mm). La passe de repositionnement de KSP devient alors **parfaitement déterministe** — mesuré sur
+la Mun, quatre rechargements du même fichier : `Moving Vessel up 0.042m`, la même valeur aux quatre.
+Elle n'est pour autant pas inoffensive, et le keeper garde tout son intérêt, pour une raison qui n'a
+plus rien à voir avec la dérive :
+
+**`CheckGroundCollision` pose le point le plus bas des *colliders* sur le terrain — or le collider de
+l'ancre s'arrête 2,08 cm au-dessus de l'origine de la pièce**, alors que son modèle visible descend
+jusqu'à l'origine (mesuré dans `groundAnchor.mu` : maillage du corps `y ∈ [0 ; 0,1496]`, maillage du
+collider `y ∈ [0,0208 ; 0,1496]`, et les quatre vis n'ont **aucun** collider). Le recalage laisse donc
+mécaniquement les deux centimètres de socle en l'air : l'ancre paraît très légèrement flotter.
+
+Trois mesures indépendantes concordent sur ce chiffre : le `.mu` (2,08 cm de vide sous le collider),
+la sonde (`vessel-collider = +20,8 mm` après recalage, contre −21,1 mm dans la sauvegarde), et la ligne
+`up 0.042m` de KSP.
+
+Et surtout : **la position que le keeper préserve est celle que le jeu lui-même donne à l'ancre au
+moment du rivetage.** Le keeper ne défend pas une préférence du joueur, il empêche que le résultat du
+déploiement stock soit défait au chargement suivant — puis à chaque chargement, tant que les niveaux
+PQS de la sauvegarde restent à `0/0`.
+
+Sa justification est donc à lire ainsi :
+
+- ~~il empêche une dérive erratique de plusieurs centimètres à chaque chargement~~ — ça, c'était le
+  terrain, et c'est le correctif PQS qui le règle ;
+- **il préserve la pose issue du rivetage**, que la passe de KSP remonterait de 4,2 cm sur l'ancre
+  stock, du seul fait que le collider de cette pièce est plus court que sa forme.
+
+### Le cas de bord à connaître
+
+Le keeper n'agit que sur des niveaux `0/0`, jamais initialisés — des niveaux simplement **périmés**
+(après un changement du réglage de détail du terrain) le laissent passer, délibérément, parce que le
+terrain a alors vraiment changé de forme. Reste un cas étroit mais réel : une pièce **fraîchement
+posée**, encore à `0/0`, sur laquelle on changerait le détail du terrain **avant** son premier
+rechargement. Le keeper la maintiendrait à son altitude alors que le sol a bougé pour de bon. Le
+correctif PQS n'y change rien : il corrige la précision du maillage, pas son niveau de détail.
 
 ## Le contournement, sans le mod
 

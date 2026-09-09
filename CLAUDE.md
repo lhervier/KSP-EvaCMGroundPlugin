@@ -55,6 +55,15 @@ de **reposer une base ancrée sur le terrain à chaque chargement** — le bug d
 faire » de `Vessel.GoOffRails`. **Activé par défaut** depuis le 2026-09-08 — il l'était à
 `false` le temps de l'éprouver en jeu — via le réglage `keepAnchoredBaseGroundPosition`.
 
+⚠️ **Sa justification a changé le 2026-09-09**, quand la cause profonde a été trouvée (le maillage de
+collision du terrain, voir plus bas). Il ne combat plus une dérive erratique : le sol ne bouge plus, et
+la passe de KSP est devenue déterministe (mesuré sur la Mun : `up 0.042m`, la même valeur à quatre
+rechargements). Ce qu'il empêche désormais, c'est que cette passe **défasse la pose issue du
+rivetage** — `CheckGroundCollision` pose le point le plus bas des *colliders* sur le terrain, or celui
+de l'ancre s'arrête **2,08 cm au-dessus de l'origine de la pièce** alors que son modèle descend
+jusqu'à l'origine (mesuré dans le `.mu`). D'où 4,2 cm de remontée à chaque chargement, et un socle qui
+flotte visiblement. Détail et cas de bord dans [CLAUDE-rechargement.md](CLAUDE-rechargement.md).
+
 Il n'a **aucun lien** avec la troncature de placement, et c'est délibéré : son propre addon, son
 propre réglage, aucun état partagé. Il mériterait un mod à part et pourra y être déplacé tel quel.
 Quatre choix à ne pas défaire sans relire le fichier de contexte :
